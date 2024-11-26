@@ -12,6 +12,7 @@ from sentry.constants import ObjectStatus
 from sentry.integrations.github.integration import GitHubIntegrationProvider
 from sentry.integrations.services.integration import integration_service
 from sentry.integrations.source_code_management.commit_context import (
+    CommitContextIntegration,
     CommitInfo,
     FileBlameInfo,
     SourceLineInfo,
@@ -29,13 +30,9 @@ from sentry.models.pullrequest import (
 from sentry.models.repository import Repository
 from sentry.shared_integrations.exceptions import ApiError
 from sentry.silo.base import SiloMode
-from sentry.tasks.commit_context import (
-    PR_COMMENT_WINDOW,
-    process_commit_context,
-    queue_comment_task_if_needed,
-)
+from sentry.tasks.commit_context import PR_COMMENT_WINDOW, process_commit_context
 from sentry.testutils.cases import IntegrationTestCase, TestCase
-from sentry.testutils.helpers.datetime import before_now, iso_format
+from sentry.testutils.helpers.datetime import before_now
 from sentry.testutils.silo import assume_test_silo_mode
 from sentry.testutils.skips import requires_snuba
 from sentry.utils.committers import get_frame_paths
@@ -73,7 +70,7 @@ class TestCommitContextIntegration(TestCase):
             data={
                 "message": "Kaboom!",
                 "platform": "python",
-                "timestamp": iso_format(before_now(seconds=10)),
+                "timestamp": before_now(seconds=10).isoformat(),
                 "stacktrace": {
                     "frames": [
                         {
@@ -163,7 +160,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
         )
 
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
     )
     def test_inactive_integration(self, mock_get_commit_context):
         """
@@ -195,7 +192,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
 
     @patch("sentry.analytics.record")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
     )
     def test_success_existing_commit(self, mock_get_commit_context, mock_record):
         """
@@ -257,7 +254,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
 
     @patch("sentry.analytics.record")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
     )
     def test_success_create_commit(self, mock_get_commit_context, mock_record):
         """
@@ -303,7 +300,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
 
     @patch("sentry.analytics.record")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
     )
     def test_success_multiple_blames(self, mock_get_commit_context, mock_record):
         """
@@ -339,7 +336,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
 
     @patch("sentry.analytics.record")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
     )
     def test_maps_correct_files(self, mock_get_commit_context, mock_record):
         """
@@ -410,7 +407,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
     @patch("sentry.tasks.groupowner.process_suspect_commits.delay")
     @patch("sentry.analytics.record")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
     )
     def test_failure_no_inapp_frames(
         self, mock_get_commit_context, mock_record, mock_process_suspect_commits
@@ -423,7 +420,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
             data={
                 "message": "Kaboom!",
                 "platform": "python",
-                "timestamp": iso_format(before_now(seconds=10)),
+                "timestamp": before_now(seconds=10).isoformat(),
                 "stacktrace": {
                     "frames": [
                         {
@@ -488,7 +485,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
     @patch("sentry.tasks.groupowner.process_suspect_commits.delay")
     @patch("sentry.analytics.record")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
     )
     def test_failure_no_blames(
         self, mock_get_commit_context, mock_record, mock_process_suspect_commits, mock_logger_info
@@ -547,7 +544,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
     @patch("sentry.tasks.groupowner.process_suspect_commits.delay")
     @patch("sentry.analytics.record")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
     )
     def test_failure_old_blame(
         self, mock_get_commit_context, mock_record, mock_process_suspect_commits, mock_logger_info
@@ -604,7 +601,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
 
     @patch("sentry.tasks.groupowner.process_suspect_commits.delay")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
         side_effect=ApiError("Unknown API error"),
     )
     def test_retry_on_bad_api_error(self, mock_get_commit_context, mock_process_suspect_commits):
@@ -630,7 +627,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
 
     @patch("sentry.tasks.groupowner.process_suspect_commits.delay")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
         side_effect=ApiError("File not found", code=404),
     )
     def test_no_retry_on_expected_api_error(
@@ -658,7 +655,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
     @patch("celery.app.task.Task.request")
     @patch("sentry.tasks.groupowner.process_suspect_commits.delay")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
         side_effect=ApiError("Unknown API error"),
     )
     def test_falls_back_on_max_retries(
@@ -690,7 +687,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
     @patch("sentry.integrations.utils.commit_context.logger.exception")
     @patch("sentry.tasks.groupowner.process_suspect_commits.delay")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
         side_effect=Exception("some other error"),
     )
     def test_failure_unknown(
@@ -739,7 +736,7 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
 
     @patch("sentry.analytics.record")
     @patch(
-        "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames",
+        "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
     )
     def test_filters_invalid_and_dedupes_frames(self, mock_get_commit_context, mock_record):
         """
@@ -836,7 +833,8 @@ class TestCommitContextAllFrames(TestCommitContextIntegration):
 
 
 @patch(
-    "sentry.integrations.github.GitHubIntegration.get_commit_context_all_frames", return_value=[]
+    "sentry.integrations.github.integration.GitHubIntegration.get_commit_context_all_frames",
+    return_value=[],
 )
 @patch("sentry.integrations.github.tasks.pr_comment.github_comment_workflow.delay")
 class TestGHCommentQueuing(IntegrationTestCase, TestCommitContextIntegration):
@@ -1208,13 +1206,20 @@ class TestGHCommentQueuing(IntegrationTestCase, TestCommitContextIntegration):
         assert integration
 
         install = integration.get_installation(organization_id=self.code_mapping.organization_id)
+        assert isinstance(install, CommitContextIntegration)
 
         with self.tasks():
-            queue_comment_task_if_needed(
-                commit=self.commit, group_owner=groupowner, repo=self.repo, installation=install
+            install.queue_comment_task_if_needed(
+                project=self.project,
+                commit=self.commit,
+                group_owner=groupowner,
+                group_id=self.event.group_id,
             )
-            queue_comment_task_if_needed(
-                commit=self.commit, group_owner=groupowner, repo=self.repo, installation=install
+            install.queue_comment_task_if_needed(
+                project=self.project,
+                commit=self.commit,
+                group_owner=groupowner,
+                group_id=self.event.group_id,
             )
             assert mock_comment_workflow.call_count == 1
 
@@ -1243,6 +1248,7 @@ class TestGHCommentQueuing(IntegrationTestCase, TestCommitContextIntegration):
         assert integration
 
         install = integration.get_installation(organization_id=self.code_mapping.organization_id)
+        assert isinstance(install, CommitContextIntegration)
 
         # open PR comment
         PullRequestComment.objects.create(
@@ -1255,10 +1261,16 @@ class TestGHCommentQueuing(IntegrationTestCase, TestCommitContextIntegration):
         )
 
         with self.tasks():
-            queue_comment_task_if_needed(
-                commit=self.commit, group_owner=groupowner, repo=self.repo, installation=install
+            install.queue_comment_task_if_needed(
+                project=self.project,
+                commit=self.commit,
+                group_owner=groupowner,
+                group_id=self.event.group_id,
             )
-            queue_comment_task_if_needed(
-                commit=self.commit, group_owner=groupowner, repo=self.repo, installation=install
+            install.queue_comment_task_if_needed(
+                project=self.project,
+                commit=self.commit,
+                group_owner=groupowner,
+                group_id=self.event.group_id,
             )
             assert mock_comment_workflow.call_count == 1

@@ -8,10 +8,9 @@ from typing import TYPE_CHECKING, TypedDict
 import sentry_sdk
 
 from sentry import options
-from sentry.grouping.component import GroupingComponent
+from sentry.grouping.component import BaseGroupingComponent
 from sentry.grouping.enhancer import LATEST_VERSION, Enhancements
 from sentry.grouping.enhancer.exceptions import InvalidEnhancerConfig
-from sentry.grouping.result import CalculatedHashes
 from sentry.grouping.strategies.base import DEFAULT_GROUPING_ENHANCEMENTS_BASE, GroupingContext
 from sentry.grouping.strategies.configurations import CONFIGURATIONS
 from sentry.grouping.utils import (
@@ -27,7 +26,7 @@ from sentry.grouping.variants import (
     ComponentVariant,
     CustomFingerprintVariant,
     FallbackVariant,
-    KeyedVariants,
+    HashedChecksumVariant,
     SaltedComponentVariant,
 )
 from sentry.models.grouphash import GroupHash
@@ -44,14 +43,14 @@ HASH_RE = re.compile(r"^[0-9a-f]{32}$")
 @dataclass
 class GroupHashInfo:
     config: GroupingConfig
-    hashes: CalculatedHashes
+    variants: dict[str, BaseVariant]
+    hashes: list[str]
     grouphashes: list[GroupHash]
     existing_grouphash: GroupHash | None
 
 
 NULL_GROUPING_CONFIG: GroupingConfig = {"id": "", "enhancements": ""}
-NULL_HASHES = CalculatedHashes([])
-NULL_GROUPHASH_INFO = GroupHashInfo(NULL_GROUPING_CONFIG, NULL_HASHES, [], None)
+NULL_GROUPHASH_INFO = GroupHashInfo(NULL_GROUPING_CONFIG, {}, [], [], None)
 
 
 class GroupingConfigNotFound(LookupError):
@@ -137,7 +136,7 @@ class BackgroundGroupingConfigLoader(GroupingConfigLoader):
 
 
 @sentry_sdk.tracing.trace
-def get_grouping_config_dict_for_project(project, silent=True) -> GroupingConfig:
+def get_grouping_config_dict_for_project(project) -> GroupingConfig:
     """Fetches all the information necessary for grouping from the project
     settings.  The return value of this is persisted with the event on
     ingestion so that the grouping algorithm can be re-run later.
@@ -236,7 +235,15 @@ def get_fingerprinting_config_for_project(
 
 
 def apply_server_fingerprinting(event, config, allow_custom_title=True):
-    client_fingerprint = event.get("fingerprint")
+    fingerprint_info = {}
+
+    client_fingerprint = event.get("fingerprint", [])
+    client_fingerprint_is_default = len(client_fingerprint) == 1 and is_default_fingerprint_var(
+        client_fingerprint[0]
+    )
+    if client_fingerprint and not client_fingerprint_is_default:
+        fingerprint_info["client_fingerprint"] = client_fingerprint
+
     rv = config.get_fingerprint_values_for_event(event)
     if rv is not None:
         rule, new_fingerprint, attributes = rv
@@ -249,21 +256,18 @@ def apply_server_fingerprinting(event, config, allow_custom_title=True):
 
         # Persist the rule that matched with the fingerprint in the event
         # dictionary for later debugging.
-        event["_fingerprint_info"] = {
-            "client_fingerprint": client_fingerprint,
-            "matched_rule": rule.to_json(),
-        }
+        fingerprint_info["matched_rule"] = rule.to_json()
 
-        if rule.is_builtin:
-            event["_fingerprint_info"]["is_builtin"] = True
+    if fingerprint_info:
+        event["_fingerprint_info"] = fingerprint_info
 
 
 def _get_calculated_grouping_variants_for_event(
     event: Event, context: GroupingContext
-) -> dict[str, GroupingComponent]:
+) -> dict[str, BaseGroupingComponent]:
     winning_strategy: str | None = None
     precedence_hint: str | None = None
-    per_variant_components: dict[str, list[GroupingComponent]] = {}
+    per_variant_components: dict[str, list[BaseGroupingComponent]] = {}
 
     for strategy in context.config.iter_strategies():
         # Defined in src/sentry/grouping/strategies/base.py
@@ -288,7 +292,7 @@ def _get_calculated_grouping_variants_for_event(
 
     rv = {}
     for variant, components in per_variant_components.items():
-        component = GroupingComponent(id=variant, values=components)
+        component = BaseGroupingComponent(id=variant, values=components)
         if not component.contributes and precedence_hint:
             component.update(hint=precedence_hint)
         rv[variant] = component
@@ -296,19 +300,28 @@ def _get_calculated_grouping_variants_for_event(
     return rv
 
 
+# This is called by the Event model in get_grouping_variants()
 def get_grouping_variants_for_event(
     event: Event, config: StrategyConfiguration | None = None
 ) -> dict[str, BaseVariant]:
     """Returns a dict of all grouping variants for this event."""
     # If a checksum is set the only variant that comes back from this
     # event is the checksum variant.
+    #
+    # TODO: Is there a reason we don't treat a checksum like a custom fingerprint, and run the other
+    # strategies but mark them as non-contributing, with explanations why?
+    #
+    # TODO: In the case where we have to hash the checksum to get a value in the right format, we
+    # store the raw value as well (provided it's not so long that it will overflow the DB field).
+    # Even when we do this, though, we don't set the raw value as non-cotributing, and we don't add
+    # an "ignored because xyz" hint on the variant, which we should.
     checksum = event.data.get("checksum")
     if checksum:
         if HASH_RE.match(checksum):
             return {"checksum": ChecksumVariant(checksum)}
 
         rv: dict[str, BaseVariant] = {
-            "hashed-checksum": ChecksumVariant(hash_from_values(checksum), hashed=True),
+            "hashed_checksum": HashedChecksumVariant(hash_from_values(checksum), checksum),
         }
 
         # The legacy code path also supported arbitrary values here but
@@ -346,10 +359,10 @@ def get_grouping_variants_for_event(
             rv[key] = ComponentVariant(component, context.config)
 
         fingerprint = resolve_fingerprint_values(fingerprint, event.data)
-        if fingerprint_info and fingerprint_info.get("is_builtin", False):
-            rv["built-in-fingerprint"] = BuiltInFingerprintVariant(fingerprint, fingerprint_info)
+        if (fingerprint_info or {}).get("matched_rule", {}).get("is_builtin") is True:
+            rv["built_in_fingerprint"] = BuiltInFingerprintVariant(fingerprint, fingerprint_info)
         else:
-            rv["custom-fingerprint"] = CustomFingerprintVariant(fingerprint, fingerprint_info)
+            rv["custom_fingerprint"] = CustomFingerprintVariant(fingerprint, fingerprint_info)
 
     # If only the default is referenced, we can use the variants as is
     elif defaults_referenced == 1 and len(fingerprint) == 1:
@@ -371,18 +384,3 @@ def get_grouping_variants_for_event(
         rv["fallback"] = FallbackVariant()
 
     return rv
-
-
-def sort_grouping_variants(variants: dict[str, BaseVariant]) -> KeyedVariants:
-    """Sort a sequence of variants into flat variants"""
-
-    flat_variants = []
-
-    for name, variant in variants.items():
-        flat_variants.append((name, variant))
-
-    # Sort system variant to the back of the list to resolve ambiguities when
-    # choosing primary_hash for Snuba
-    flat_variants.sort(key=lambda name_and_variant: 1 if name_and_variant[0] == "system" else 0)
-
-    return flat_variants

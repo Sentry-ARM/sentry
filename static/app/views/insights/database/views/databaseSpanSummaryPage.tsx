@@ -6,9 +6,6 @@ import {Breadcrumbs} from 'sentry/components/breadcrumbs';
 import ButtonBar from 'sentry/components/buttonBar';
 import FeedbackWidgetButton from 'sentry/components/feedback/widget/feedbackWidgetButton';
 import * as Layout from 'sentry/components/layouts/thirds';
-import {DatePageFilter} from 'sentry/components/organizations/datePageFilter';
-import {EnvironmentPageFilter} from 'sentry/components/organizations/environmentPageFilter';
-import PageFilterBar from 'sentry/components/organizations/pageFilterBar';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
 import type {RouteComponentProps} from 'sentry/types/legacyReactRouter';
@@ -21,7 +18,9 @@ import {HeaderContainer} from 'sentry/views/insights/common/components/headerCon
 import InsightIssuesList from 'sentry/views/insights/common/components/issues';
 import {MetricReadout} from 'sentry/views/insights/common/components/metricReadout';
 import * as ModuleLayout from 'sentry/views/insights/common/components/moduleLayout';
+import {ModulePageFilterBar} from 'sentry/views/insights/common/components/modulePageFilterBar';
 import {ModulePageProviders} from 'sentry/views/insights/common/components/modulePageProviders';
+import {ModuleBodyUpsellHook} from 'sentry/views/insights/common/components/moduleUpsellHookWrapper';
 import {ReadoutRibbon, ToolRibbon} from 'sentry/views/insights/common/components/ribbon';
 import {DatabaseSpanDescription} from 'sentry/views/insights/common/components/spanDescription';
 import {getTimeSpentExplanation} from 'sentry/views/insights/common/components/tableCells/timeSpentCell';
@@ -42,6 +41,8 @@ import {ThroughputChart} from 'sentry/views/insights/database/components/charts/
 import {isAValidSort} from 'sentry/views/insights/database/components/tables/queriesTable';
 import {QueryTransactionsTable} from 'sentry/views/insights/database/components/tables/queryTransactionsTable';
 import {DEFAULT_DURATION_AGGREGATE} from 'sentry/views/insights/database/settings';
+import {BackendHeader} from 'sentry/views/insights/pages/backend/backendPageHeader';
+import {useDomainViewFilters} from 'sentry/views/insights/pages/useFilters';
 import type {SpanMetricsQueryFilters} from 'sentry/views/insights/types';
 import {
   ModuleName,
@@ -49,7 +50,7 @@ import {
   SpanIndexedField,
   SpanMetricsField,
 } from 'sentry/views/insights/types';
-import {TraceViewSources} from 'sentry/views/performance/newTraceDetails/traceMetadataHeader';
+import {TraceViewSources} from 'sentry/views/performance/newTraceDetails/traceHeader/breadcrumbs';
 
 type Query = {
   transaction: string;
@@ -61,6 +62,7 @@ type Query = {
 type Props = RouteComponentProps<Query, {groupId: string}>;
 
 export function DatabaseSpanSummaryPage({params}: Props) {
+  const {isInDomainView} = useDomainViewFilters();
   const location = useLocation<Query>();
 
   const selectedAggregate = DEFAULT_DURATION_AGGREGATE;
@@ -177,141 +179,157 @@ export function DatabaseSpanSummaryPage({params}: Props) {
     'api.starfish.span-summary-page-metrics-chart'
   );
 
-  useSynchronizeCharts([!isThroughputDataLoading && !isDurationDataLoading]);
+  useSynchronizeCharts(2, !isThroughputDataLoading && !isDurationDataLoading);
 
   const crumbs = useModuleBreadcrumbs('db');
 
   return (
     <Fragment>
-      <Layout.Header>
-        <Layout.HeaderContent>
-          <Breadcrumbs
-            crumbs={[
-              ...crumbs,
-              {
-                label: 'Query Summary',
-              },
-            ]}
-          />
-          <Layout.Title>{t('Query Summary')}</Layout.Title>
-        </Layout.HeaderContent>
-        <Layout.HeaderActions>
-          <ButtonBar gap={1}>
-            <FeedbackWidgetButton />
-          </ButtonBar>
-        </Layout.HeaderActions>
-      </Layout.Header>
+      {!isInDomainView && (
+        <Layout.Header>
+          <Layout.HeaderContent>
+            <Breadcrumbs
+              crumbs={[
+                ...crumbs,
+                {
+                  label: t('Query Summary'),
+                },
+              ]}
+            />
+            <Layout.Title>{t('Query Summary')}</Layout.Title>
+          </Layout.HeaderContent>
+          <Layout.HeaderActions>
+            <ButtonBar gap={1}>
+              <FeedbackWidgetButton />
+            </ButtonBar>
+          </Layout.HeaderActions>
+        </Layout.Header>
+      )}
 
-      <Layout.Body>
-        <Layout.Main fullWidth>
-          <ModuleLayout.Layout>
-            <ModuleLayout.Full>
-              <HeaderContainer>
-                <ToolRibbon>
-                  <PageFilterBar condensed>
-                    <EnvironmentPageFilter />
-                    <DatePageFilter />
-                  </PageFilterBar>
-                </ToolRibbon>
+      {isInDomainView && (
+        <BackendHeader
+          headerTitle={t('Query Summary')}
+          breadcrumbs={[
+            {
+              label: t('Query Summary'),
+            },
+          ]}
+          module={ModuleName.DB}
+        />
+      )}
 
-                <ReadoutRibbon>
-                  <MetricReadout
-                    title={getThroughputTitle('db')}
-                    value={spanMetrics?.[`${SpanFunction.SPM}()`]}
-                    unit={RateUnit.PER_MINUTE}
-                    isLoading={areSpanMetricsLoading}
+      <ModuleBodyUpsellHook moduleName={ModuleName.DB}>
+        <Layout.Body>
+          <Layout.Main fullWidth>
+            <ModuleLayout.Layout>
+              <ModuleLayout.Full>
+                <HeaderContainer>
+                  <ToolRibbon>
+                    <ModulePageFilterBar
+                      moduleName={ModuleName.DB}
+                      disableProjectFilter
+                    />
+                  </ToolRibbon>
+
+                  <ReadoutRibbon>
+                    <MetricReadout
+                      title={getThroughputTitle('db')}
+                      value={spanMetrics?.[`${SpanFunction.SPM}()`]}
+                      unit={RateUnit.PER_MINUTE}
+                      isLoading={areSpanMetricsLoading}
+                    />
+
+                    <MetricReadout
+                      title={DataTitles.avg}
+                      value={spanMetrics?.[`avg(${SpanMetricsField.SPAN_SELF_TIME})`]}
+                      unit={DurationUnit.MILLISECOND}
+                      isLoading={areSpanMetricsLoading}
+                    />
+
+                    <MetricReadout
+                      title={DataTitles.timeSpent}
+                      value={spanMetrics?.['sum(span.self_time)']}
+                      unit={DurationUnit.MILLISECOND}
+                      tooltip={getTimeSpentExplanation(
+                        spanMetrics?.['time_spent_percentage()'],
+                        'db'
+                      )}
+                      isLoading={areSpanMetricsLoading}
+                    />
+                  </ReadoutRibbon>
+                </HeaderContainer>
+              </ModuleLayout.Full>
+
+              {groupId && (
+                <DescriptionContainer>
+                  <DatabaseSpanDescription
+                    groupId={groupId}
+                    preliminaryDescription={spanMetrics?.['span.description']}
+                  />
+                </DescriptionContainer>
+              )}
+
+              <Feature features="insights-related-issues-table">
+                {!areIndexedSpansByGroupIdLoading && (
+                  <ModuleLayout.Full>
+                    <InsightIssuesList
+                      issueTypes={[
+                        'performance_slow_db_query',
+                        'performance_n_plus_one_db_queries',
+                      ]}
+                      message={indexedSpansByGroupId[0]?.['span.description']}
+                    />
+                  </ModuleLayout.Full>
+                )}
+              </Feature>
+
+              <ModuleLayout.Full>
+                <ChartContainer>
+                  <ThroughputChart
+                    series={throughputData['spm()']}
+                    isLoading={isThroughputDataLoading}
+                    error={throughputError}
+                    filters={filters}
                   />
 
-                  <MetricReadout
-                    title={DataTitles.avg}
-                    value={spanMetrics?.[`avg(${SpanMetricsField.SPAN_SELF_TIME})`]}
-                    unit={DurationUnit.MILLISECOND}
-                    isLoading={areSpanMetricsLoading}
-                  />
-
-                  <MetricReadout
-                    title={DataTitles.timeSpent}
-                    value={spanMetrics?.['sum(span.self_time)']}
-                    unit={DurationUnit.MILLISECOND}
-                    tooltip={getTimeSpentExplanation(
-                      spanMetrics?.['time_spent_percentage()'],
-                      'db'
-                    )}
-                    isLoading={areSpanMetricsLoading}
-                  />
-                </ReadoutRibbon>
-              </HeaderContainer>
-            </ModuleLayout.Full>
-
-            {groupId && (
-              <DescriptionContainer>
-                <DatabaseSpanDescription
-                  groupId={groupId}
-                  preliminaryDescription={spanMetrics?.['span.description']}
-                />
-              </DescriptionContainer>
-            )}
-
-            <Feature features="insights-related-issues-table">
-              {!areIndexedSpansByGroupIdLoading && (
-                <ModuleLayout.Full>
-                  <InsightIssuesList
-                    issueTypes={[
-                      'performance_slow_db_query',
-                      'performance_n_plus_one_db_queries',
+                  <DurationChart
+                    series={[
+                      durationData[
+                        `${selectedAggregate}(${SpanMetricsField.SPAN_SELF_TIME})`
+                      ],
                     ]}
-                    message={indexedSpansByGroupId[0]?.['span.description']}
+                    isLoading={isDurationDataLoading}
+                    error={durationError}
+                    filters={filters}
+                  />
+                </ChartContainer>
+              </ModuleLayout.Full>
+
+              {span && (
+                <ModuleLayout.Full>
+                  <QueryTransactionsTable
+                    span={span}
+                    data={transactionsList}
+                    error={transactionsListError}
+                    isLoading={isTransactionsListLoading}
+                    meta={transactionsListMeta}
+                    pageLinks={transactionsListPageLinks}
+                    sort={sort}
                   />
                 </ModuleLayout.Full>
               )}
-            </Feature>
+            </ModuleLayout.Layout>
 
-            <ModuleLayout.Full>
-              <ChartContainer>
-                <ThroughputChart
-                  series={throughputData['spm()']}
-                  isLoading={isThroughputDataLoading}
-                  error={throughputError}
-                  groupId={groupId}
-                />
-
-                <DurationChart
-                  series={[
-                    durationData[
-                      `${selectedAggregate}(${SpanMetricsField.SPAN_SELF_TIME})`
-                    ],
-                  ]}
-                  isLoading={isDurationDataLoading}
-                  error={durationError}
-                  groupId={groupId}
-                />
-              </ChartContainer>
-            </ModuleLayout.Full>
-
-            {span && (
-              <ModuleLayout.Full>
-                <QueryTransactionsTable
-                  span={span}
-                  data={transactionsList}
-                  error={transactionsListError}
-                  isLoading={isTransactionsListLoading}
-                  meta={transactionsListMeta}
-                  pageLinks={transactionsListPageLinks}
-                  sort={sort}
-                />
-              </ModuleLayout.Full>
-            )}
-          </ModuleLayout.Layout>
-
-          <SampleList
-            groupId={span[SpanMetricsField.SPAN_GROUP]}
-            moduleName={ModuleName.DB}
-            transactionName={transaction}
-            transactionMethod={transactionMethod}
-            referrer={TraceViewSources.QUERIES_MODULE}
-          />
-        </Layout.Main>
-      </Layout.Body>
+            <SampleList
+              groupId={span[SpanMetricsField.SPAN_GROUP]}
+              moduleName={ModuleName.DB}
+              transactionName={transaction}
+              transactionMethod={transactionMethod}
+              referrer={TraceViewSources.QUERIES_MODULE}
+            />
+          </Layout.Main>
+        </Layout.Body>
+      </ModuleBodyUpsellHook>
     </Fragment>
   );
 }

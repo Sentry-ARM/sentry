@@ -1,18 +1,17 @@
 import {Fragment, useMemo} from 'react';
+import styled from '@emotion/styled';
 
 import EmptyStateWarning from 'sentry/components/emptyStateWarning';
-import Link from 'sentry/components/links/link';
 import LoadingIndicator from 'sentry/components/loadingIndicator';
 import Pagination from 'sentry/components/pagination';
-import {IconWarning} from 'sentry/icons';
+import {IconArrow} from 'sentry/icons/iconArrow';
+import {IconWarning} from 'sentry/icons/iconWarning';
 import {t} from 'sentry/locale';
 import type {NewQuery} from 'sentry/types/organization';
-import type {EventData} from 'sentry/utils/discover/eventView';
+import {defined} from 'sentry/utils';
 import EventView from 'sentry/utils/discover/eventView';
-import {getFieldRenderer} from 'sentry/utils/discover/fieldRenderers';
-import {DiscoverDatasets} from 'sentry/utils/discover/types';
-import {generateLinkToEventInTraceView} from 'sentry/utils/discover/urls';
-import {useLocation} from 'sentry/utils/useLocation';
+import {fieldAlignment} from 'sentry/utils/discover/fields';
+import {MutableSearch} from 'sentry/utils/tokenizeSearch';
 import useOrganization from 'sentry/utils/useOrganization';
 import usePageFilters from 'sentry/utils/usePageFilters';
 import {
@@ -25,12 +24,17 @@ import {
   TableStatus,
   useTableStyles,
 } from 'sentry/views/explore/components/table';
+import {useSpanTags} from 'sentry/views/explore/contexts/spanTagsContext';
 import {useDataset} from 'sentry/views/explore/hooks/useDataset';
 import {useSampleFields} from 'sentry/views/explore/hooks/useSampleFields';
 import {useSorts} from 'sentry/views/explore/hooks/useSorts';
 import {useUserQuery} from 'sentry/views/explore/hooks/useUserQuery';
 import {useSpansQuery} from 'sentry/views/insights/common/queries/useSpansQuery';
-import {TraceViewSources} from 'sentry/views/performance/newTraceDetails/traceMetadataHeader';
+
+import {useAnalytics} from '../hooks/useAnalytics';
+import {useVisualizes} from '../hooks/useVisualizes';
+
+import {FieldRenderer} from './fieldRenderer';
 
 interface SpansTableProps {}
 
@@ -39,25 +43,34 @@ export function SpansTable({}: SpansTableProps) {
 
   const [dataset] = useDataset();
   const [fields] = useSampleFields();
-  const [sorts] = useSorts({fields});
+  const [sorts, setSorts] = useSorts({fields});
   const [query] = useUserQuery();
+  const [visualizes] = useVisualizes();
+  const organization = useOrganization();
 
   const eventView = useMemo(() => {
     const queryFields = [
       ...fields,
       'project',
       'trace',
-      'transaction.id',
+      'transaction.span_id',
       'span_id',
       'timestamp',
     ];
+
+    const search = new MutableSearch(query);
+
+    // Filtering out all spans with op like 'ui.interaction*' which aren't
+    // embedded under transactions. The trace view does not support rendering
+    // such spans yet.
+    search.addFilterValues('!transaction.span_id', ['00']);
 
     const discoverQuery: NewQuery = {
       id: undefined,
       name: 'Explore - Span Samples',
       fields: queryFields,
       orderby: sorts.map(sort => `${sort.kind === 'desc' ? '-' : ''}${sort.field}`),
-      query,
+      query: search.formatString(),
       version: 2,
       dataset,
     };
@@ -65,10 +78,22 @@ export function SpansTable({}: SpansTableProps) {
     return EventView.fromNewQueryWithPageFilters(discoverQuery, selection);
   }, [dataset, fields, sorts, query, selection]);
 
+  const columns = useMemo(() => eventView.getColumns(), [eventView]);
+
   const result = useSpansQuery({
     eventView,
     initialData: [],
     referrer: 'api.explore.spans-samples-table',
+    allowAggregateConditions: false,
+  });
+
+  useAnalytics({
+    result,
+    visualizes,
+    organization,
+    columns: fields,
+    userQuery: query,
+    resultsMode: 'sample',
   });
 
   const {tableStyles} = useTableStyles({
@@ -82,16 +107,54 @@ export function SpansTable({}: SpansTableProps) {
 
   const meta = result.meta ?? {};
 
+  const numberTags = useSpanTags('number');
+  const stringTags = useSpanTags('string');
+
   return (
     <Fragment>
       <Table style={tableStyles}>
         <TableHead>
           <TableRow>
-            {fields.map((field, i) => (
-              <TableHeadCell key={i} isFirst={i === 0}>
-                {field}
-              </TableHeadCell>
-            ))}
+            {fields.map((field, i) => {
+              // Hide column names before alignment is determined
+              if (result.isPending) {
+                return <TableHeadCell key={i} isFirst={i === 0} />;
+              }
+
+              const fieldType = meta.fields?.[field];
+              const align = fieldAlignment(field, fieldType);
+              const tag = stringTags[field] ?? numberTags[field] ?? null;
+
+              const direction = sorts.find(s => s.field === field)?.kind;
+
+              function updateSort() {
+                const kind = direction === 'desc' ? 'asc' : 'desc';
+                setSorts([{field, kind}]);
+              }
+
+              return (
+                <StyledTableHeadCell
+                  align={align}
+                  key={i}
+                  isFirst={i === 0}
+                  onClick={updateSort}
+                >
+                  <span>{tag?.name ?? field}</span>
+                  {defined(direction) && (
+                    <IconArrow
+                      size="xs"
+                      direction={
+                        direction === 'desc'
+                          ? 'down'
+                          : direction === 'asc'
+                            ? 'up'
+                            : undefined
+                      }
+                    />
+                  )}
+                </StyledTableHeadCell>
+              );
+            })}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -109,12 +172,11 @@ export function SpansTable({}: SpansTableProps) {
                 {fields.map((field, j) => {
                   return (
                     <TableBodyCell key={j}>
-                      <Field
-                        dataset={dataset}
+                      <FieldRenderer
+                        column={columns[j]}
                         data={row}
-                        field={field}
                         unit={meta?.units?.[field]}
-                        meta={fields}
+                        meta={meta}
                       />
                     </TableBodyCell>
                   );
@@ -135,41 +197,6 @@ export function SpansTable({}: SpansTableProps) {
   );
 }
 
-interface FieldProps {
-  data: EventData;
-  dataset: DiscoverDatasets;
-  field: string;
-  meta: string[];
-  unit?: string;
-}
-
-function Field({data, dataset, field, meta, unit}: FieldProps) {
-  const location = useLocation();
-  const organization = useOrganization();
-
-  const renderer = getFieldRenderer(field, meta, false);
-
-  let rendered = renderer(data, {
-    location,
-    organization,
-    unit,
-  });
-
-  if (field === 'id' || field === 'span_id') {
-    const target = generateLinkToEventInTraceView({
-      projectSlug: data.project,
-      traceSlug: data.trace,
-      timestamp: data.timestamp,
-      eventId:
-        dataset === DiscoverDatasets.SPANS_INDEXED ? data['transaction.id'] : undefined,
-      organization,
-      location,
-      spanId: data.span_id,
-      source: TraceViewSources.TRACES,
-    });
-
-    rendered = <Link to={target}>{rendered}</Link>;
-  }
-
-  return <Fragment>{rendered}</Fragment>;
-}
+const StyledTableHeadCell = styled(TableHeadCell)`
+  cursor: pointer;
+`;

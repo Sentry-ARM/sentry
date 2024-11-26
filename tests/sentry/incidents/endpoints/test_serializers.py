@@ -4,6 +4,7 @@ from functools import cached_property
 from typing import Any
 from unittest.mock import patch
 
+import orjson
 import pytest
 import responses
 from django.test import override_settings
@@ -42,6 +43,7 @@ from sentry.integrations.services.integration import integration_service
 from sentry.integrations.services.integration.serial import serialize_integration
 from sentry.integrations.slack.utils.channel import SlackChannelIdData
 from sentry.models.environment import Environment
+from sentry.seer.anomaly_detection.types import StoreDataResponse
 from sentry.sentry_apps.services.app import app_service
 from sentry.silo.base import SiloMode
 from sentry.snuba.dataset import Dataset
@@ -426,6 +428,14 @@ class TestAlertRuleSerializer(TestAlertRuleSerializerBase):
         assert serializer.is_valid(), serializer.errors
 
     def test_boundary_off_by_one(self):
+        actions = [
+            {
+                "type": "slack",
+                "targetIdentifier": "my-channel",
+                "targetType": "specific",
+                "integration": self.integration.id,
+            }
+        ]
         self.run_fail_validation_test(
             {
                 "thresholdType": AlertRuleThresholdType.ABOVE.value,
@@ -434,7 +444,7 @@ class TestAlertRuleSerializer(TestAlertRuleSerializerBase):
                     {
                         "label": "critical",
                         "alertThreshold": 0,
-                        "actions": [],
+                        "actions": actions,
                     },
                 ],
             },
@@ -455,7 +465,7 @@ class TestAlertRuleSerializer(TestAlertRuleSerializerBase):
                     {
                         "label": "critical",
                         "alertThreshold": 2,
-                        "actions": [],
+                        "actions": actions,
                     },
                 ],
             },
@@ -470,6 +480,7 @@ class TestAlertRuleSerializer(TestAlertRuleSerializerBase):
         )
 
     @with_feature("organizations:anomaly-detection-alerts")
+    @with_feature("organizations:anomaly-detection-rollout")
     @patch(
         "sentry.seer.anomaly_detection.store_data.seer_anomaly_detection_connection_pool.urlopen"
     )
@@ -477,7 +488,8 @@ class TestAlertRuleSerializer(TestAlertRuleSerializerBase):
         """
         Anomaly detection alerts cannot have a nonzero alert rule threshold
         """
-        mock_seer_request.return_value = HTTPResponse(status=200)
+        seer_return_value: StoreDataResponse = {"success": True}
+        mock_seer_request.return_value = HTTPResponse(orjson.dumps(seer_return_value), status=200)
 
         params = self.valid_params.copy()
         params["detection_type"] = AlertRuleDetectionType.DYNAMIC
@@ -715,7 +727,10 @@ class TestAlertRuleSerializer(TestAlertRuleSerializerBase):
         assert alert_rule.team_id is None
 
     def test_invalid_detection_type(self):
-        with self.feature("organizations:anomaly-detection-alerts"):
+        with (
+            self.feature("organizations:anomaly-detection-alerts"),
+            self.feature("organizations:anomaly-detection-rollout"),
+        ):
             params = self.valid_params.copy()
             params["detection_type"] = AlertRuleDetectionType.PERCENT  # requires comparison delta
             serializer = AlertRuleSerializer(context=self.context, data=params, partial=True)
@@ -858,7 +873,6 @@ class TestAlertRuleTriggerSerializer(TestAlertRuleSerializerBase):
             "threshold_type": 0,
             "resolve_threshold": 1,
             "alert_threshold": 0,
-            "excluded_projects": [self.project.slug],
             "actions": [{"type": "email", "targetType": "team", "targetIdentifier": self.team.id}],
         }
 

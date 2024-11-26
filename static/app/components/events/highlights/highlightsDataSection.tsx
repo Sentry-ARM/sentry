@@ -159,7 +159,7 @@ function HighlightsData({
   const tagReplayId = tagReplayItem?.value ?? EMPTY_HIGHLIGHT_DEFAULT;
 
   // if the id doesn't exist for either tag or context, it's rendered as '--'
-  const replayId =
+  const replayId: string | undefined =
     contextReplayId !== EMPTY_HIGHLIGHT_DEFAULT
       ? contextReplayId
       : tagReplayId !== EMPTY_HIGHLIGHT_DEFAULT
@@ -258,17 +258,18 @@ export default function HighlightsDataSection({
   const organization = useOrganization();
   const hasStreamlinedUI = useHasStreamlinedUI();
 
-  const viewAllButton = viewAllRef ? (
-    <Button
-      onClick={() => {
-        trackAnalytics('highlights.issue_details.view_all_clicked', {organization});
-        viewAllRef?.current?.scrollIntoView({behavior: 'smooth'});
-      }}
-      size="xs"
-    >
-      {t('View All')}
-    </Button>
-  ) : null;
+  const viewAllButton =
+    !hasStreamlinedUI && viewAllRef ? (
+      <Button
+        onClick={() => {
+          trackAnalytics('highlights.issue_details.view_all_clicked', {organization});
+          viewAllRef?.current?.scrollIntoView({behavior: 'smooth'});
+        }}
+        size="xs"
+      >
+        {t('View All')}
+      </Button>
+    ) : null;
 
   return (
     <InterimSection

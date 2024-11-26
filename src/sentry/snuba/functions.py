@@ -90,6 +90,7 @@ def timeseries_query(
     on_demand_metrics_enabled: bool = False,
     on_demand_metrics_type: MetricSpecType | None = None,
     query_source: QuerySource | None = None,
+    fallback_to_transactions: bool = False,
 ) -> Any:
 
     builder = ProfileFunctionsTimeseriesQueryBuilder(
@@ -105,6 +106,7 @@ def timeseries_query(
     )
     results = builder.run_query(referrer=referrer, query_source=query_source)
     results = builder.strip_alias_prefix(results)
+    results = builder.process_results(results)
 
     return SnubaTSResult(
         {
@@ -152,11 +154,12 @@ def top_events_timeseries(
     on_demand_metrics_enabled: bool = False,
     on_demand_metrics_type: MetricSpecType | None = None,
     query_source: QuerySource | None = None,
+    fallback_to_transactions: bool = False,
 ):
     assert not include_other, "Other is not supported"  # TODO: support other
 
     if top_events is None:
-        with sentry_sdk.start_span(op="discover.discover", description="top_events.fetch_events"):
+        with sentry_sdk.start_span(op="discover.discover", name="top_events.fetch_events"):
             top_events = query(
                 selected_columns,
                 query=user_query,
@@ -231,9 +234,7 @@ def format_top_events_timeseries_results(
             rollup,
         )
 
-    with sentry_sdk.start_span(
-        op="discover.discover", description="top_events.transform_results"
-    ) as span:
+    with sentry_sdk.start_span(op="discover.discover", name="top_events.transform_results") as span:
         result = query_builder.strip_alias_prefix(result)
 
         span.set_data("result_count", len(result.get("data", [])))

@@ -80,7 +80,6 @@ export enum DataCategory {
   MONITOR_SEATS = 'monitorSeats',
   PROFILE_DURATION = 'profileDuration',
   SPANS = 'spans',
-  METRIC_SECONDS = 'metricSeconds',
 }
 
 /**
@@ -100,14 +99,15 @@ export enum DataCategoryExact {
   MONITOR_SEAT = 'monitorSeat',
   PROFILE_DURATION = 'profileDuration',
   SPAN = 'span',
-  METRIC_SECOND = 'metricSecond',
 }
 
 export interface DataCategoryInfo {
   apiName: string;
   displayName: string;
+  isBilledCategory: boolean;
   name: DataCategoryExact;
   plural: string;
+  productName: string;
   titleName: string;
   uid: number;
 }

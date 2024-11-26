@@ -141,8 +141,20 @@ export function pushEventViewToLocation(props: {
   });
 }
 
-export function generateTitle({eventView, event}: {eventView: EventView; event?: Event}) {
+export function generateTitle({
+  eventView,
+  event,
+  isHomepage,
+}: {
+  eventView: EventView;
+  event?: Event;
+  isHomepage?: boolean;
+}) {
   const titles = [t('Discover')];
+
+  if (isHomepage) {
+    return t('Discover');
+  }
 
   const eventViewName = eventView.name;
   if (typeof eventViewName === 'string' && String(eventViewName).trim().length > 0) {
@@ -509,7 +521,7 @@ export function generateFieldOptions({
   functions.forEach(func => {
     const ellipsis = aggregations[func].parameters.length ? '\u2026' : '';
     const parameters = aggregations[func].parameters.map(param => {
-      const overrides = AGGREGATIONS[func].getFieldOverrides;
+      const overrides = aggregations[func].getFieldOverrides;
       if (typeof overrides === 'undefined') {
         return param;
       }
@@ -594,7 +606,7 @@ export function generateFieldOptions({
     tagKeys.sort();
     tagKeys.forEach(tag => {
       const tagValue =
-        fieldKeys.includes(tag) || AGGREGATIONS.hasOwnProperty(tag)
+        fieldKeys.includes(tag) || aggregations.hasOwnProperty(tag)
           ? `tags[${tag}]`
           : tag;
       fieldOptions[`tag:${tag}`] = {

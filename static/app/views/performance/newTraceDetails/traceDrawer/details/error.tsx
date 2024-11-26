@@ -12,15 +12,13 @@ import {generateIssueEventTarget} from 'sentry/components/quickTrace/utils';
 import {t} from 'sentry/locale';
 import type {EventError} from 'sentry/types/event';
 import {useApiQuery} from 'sentry/utils/queryClient';
-import {TraceIcons} from 'sentry/views/performance/newTraceDetails/icons';
-import type {TraceTreeNodeDetailsProps} from 'sentry/views/performance/newTraceDetails/traceDrawer/tabs/traceTreeNodeDetails';
-import {getTraceTabTitle} from 'sentry/views/performance/newTraceDetails/traceState/traceTabs';
 
-import {
-  makeTraceNodeBarColor,
-  type TraceTree,
-  type TraceTreeNode,
-} from '../../traceModels/traceTree';
+import type {TraceTreeNodeDetailsProps} from '../../traceDrawer/tabs/traceTreeNodeDetails';
+import {TraceIcons} from '../../traceIcons';
+import {TraceTree} from '../../traceModels/traceTree';
+import type {TraceTreeNode} from '../../traceModels/traceTreeNode';
+import {makeTraceNodeBarColor} from '../../traceRow/traceBar';
+import {getTraceTabTitle} from '../../traceState/traceTabs';
 
 import {IssueList} from './issues/issues';
 import {type SectionCardKeyValueList, TraceDrawerComponents} from './styles';
@@ -53,7 +51,7 @@ export function ErrorNodeDetails({
   }, [data]);
 
   const theme = useTheme();
-  const parentTransaction = node.parent_transaction;
+  const parentTransaction = TraceTree.ParentTransaction(node);
 
   const items: SectionCardKeyValueList = [
     {
@@ -79,19 +77,19 @@ export function ErrorNodeDetails({
     <LoadingIndicator />
   ) : data ? (
     <TraceDrawerComponents.DetailContainer>
-      <TraceDrawerComponents.HeaderContainer>
+      <TraceDrawerComponents.LegacyHeaderContainer>
         <TraceDrawerComponents.Title>
           <TraceDrawerComponents.IconBorder
             backgroundColor={makeTraceNodeBarColor(theme, node)}
           >
             <TraceIcons.Icon event={node.value} />
           </TraceDrawerComponents.IconBorder>
-          <TraceDrawerComponents.TitleText>
+          <TraceDrawerComponents.LegacyTitleText>
             <div>{node.value.level ?? t('error')}</div>
             <TraceDrawerComponents.TitleOp
               text={node.value.message ?? node.value.title ?? 'Error'}
             />
-          </TraceDrawerComponents.TitleText>
+          </TraceDrawerComponents.LegacyTitleText>
         </TraceDrawerComponents.Title>
         <TraceDrawerComponents.Actions>
           <TraceDrawerComponents.NodeActions
@@ -103,7 +101,7 @@ export function ErrorNodeDetails({
             {t('Go to Issue')}
           </LinkButton>
         </TraceDrawerComponents.Actions>
-      </TraceDrawerComponents.HeaderContainer>
+      </TraceDrawerComponents.LegacyHeaderContainer>
 
       <IssueList issues={issues} node={node} organization={organization} />
 

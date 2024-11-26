@@ -15,7 +15,7 @@ from sentry_ophio.enhancers import Component as RustComponent
 from sentry_ophio.enhancers import Enhancements as RustEnhancements
 
 from sentry import projectoptions
-from sentry.grouping.component import GroupingComponent
+from sentry.grouping.component import BaseGroupingComponent
 from sentry.stacktraces.functions import set_in_app
 from sentry.utils.safe import get_path, set_path
 
@@ -32,6 +32,14 @@ RUST_CACHE = RustCache(1_000)
 
 VERSIONS = [2]
 LATEST_VERSION = VERSIONS[-1]
+
+VALID_PROFILING_MATCHER_PREFIXES = (
+    "stack.abs_path",
+    "stack.module",
+    "stack.function",
+    "stack.package",
+)
+VALID_PROFILING_ACTIONS_SET = frozenset(["+app", "-app"])
 
 
 def merge_rust_enhancements(
@@ -73,7 +81,7 @@ RustExceptionData = dict[str, bytes | None]
 
 
 def make_rust_exception_data(
-    exception_data: dict[str, Any],
+    exception_data: dict[str, Any] | None,
 ) -> RustExceptionData:
     e = exception_data or {}
     e = {
@@ -86,6 +94,31 @@ def make_rust_exception_data(
         if isinstance(value, str):
             e[key] = value.encode("utf-8")
     return e
+
+
+def is_valid_profiling_matcher(matchers: list[str]) -> bool:
+    for matcher in matchers:
+        if not matcher.startswith(VALID_PROFILING_MATCHER_PREFIXES):
+            return False
+    return True
+
+
+def is_valid_profiling_action(action: str) -> bool:
+    return action in VALID_PROFILING_ACTIONS_SET
+
+
+def keep_profiling_rules(config: str) -> str:
+    filtered_rules = []
+    if config is None or config == "":
+        return ""
+    for rule in config.splitlines():
+        rule = rule.strip()
+        if rule == "" or rule.startswith("#"):  # ignore comment lines
+            continue
+        *matchers, action = rule.split()
+        if is_valid_profiling_matcher(matchers) and is_valid_profiling_action(action):
+            filtered_rules.append(rule)
+    return "\n".join(filtered_rules)
 
 
 class Enhancements:
@@ -129,7 +162,13 @@ class Enhancements:
             if category is not None:
                 set_path(frame, "data", "category", value=category)
 
-    def assemble_stacktrace_component(self, components, frames, platform, exception_data=None):
+    def assemble_stacktrace_component(
+        self,
+        components: list[BaseGroupingComponent],
+        frames: list[dict[str, Any]],
+        platform: str | None,
+        exception_data: dict[str, Any] | None = None,
+    ) -> tuple[BaseGroupingComponent, bool]:
         """
         This assembles a `stacktrace` grouping component out of the given
         `frame` components and source frames.
@@ -138,15 +177,7 @@ class Enhancements:
         """
         match_frames = [create_match_frame(frame, platform) for frame in frames]
 
-        # TODO: Update the Rust component to not take the two values
-        rust_components = [
-            RustComponent(
-                is_prefix_frame=False,
-                is_sentinel_frame=False,
-                contributes=c.contributes,
-            )
-            for c in components
-        ]
+        rust_components = [RustComponent(contributes=c.contributes) for c in components]
 
         rust_results = self.rust_enhancements.assemble_stacktrace_component(
             match_frames, make_rust_exception_data(exception_data), rust_components
@@ -155,7 +186,7 @@ class Enhancements:
         for py_component, rust_component in zip(components, rust_components):
             py_component.update(contributes=rust_component.contributes, hint=rust_component.hint)
 
-        component = GroupingComponent(
+        component = BaseGroupingComponent(
             id="stacktrace",
             values=components,
             hint=rust_results.hint,

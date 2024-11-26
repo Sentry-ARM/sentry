@@ -4,6 +4,9 @@
     "sentry.organization",
     "sentry.project"
   ],
+  "flags.flagauditlogmodel": [
+    "sentry.organization"
+  ],
   "hybridcloud.apikeyreplica": [
     "sentry.apikey",
     "sentry.organization"
@@ -86,10 +89,12 @@
   ],
   "sentry.apiauthorization": [
     "sentry.apiapplication",
+    "sentry.organization",
     "sentry.user"
   ],
   "sentry.apigrant": [
     "sentry.apiapplication",
+    "sentry.organization",
     "sentry.user"
   ],
   "sentry.apikey": [
@@ -97,6 +102,7 @@
   ],
   "sentry.apitoken": [
     "sentry.apiapplication",
+    "sentry.organization",
     "sentry.user"
   ],
   "sentry.artifactbundle": [
@@ -138,7 +144,9 @@
     "sentry.authprovider",
     "sentry.organization"
   ],
-  "sentry.broadcast": [],
+  "sentry.broadcast": [
+    "sentry.user"
+  ],
   "sentry.broadcastseen": [
     "sentry.broadcast",
     "sentry.user"
@@ -184,6 +192,13 @@
   "sentry.dashboard": [
     "sentry.organization",
     "sentry.user"
+  ],
+  "sentry.dashboardpermissions": [
+    "sentry.dashboard"
+  ],
+  "sentry.dashboardpermissionsteam": [
+    "sentry.dashboardpermissions",
+    "sentry.team"
   ],
   "sentry.dashboardproject": [
     "sentry.dashboard",
@@ -657,7 +672,6 @@
   "sentry.relayusage": [],
   "sentry.release": [
     "sentry.organization",
-    "sentry.project",
     "sentry.user"
   ],
   "sentry.releaseactivity": [
@@ -726,6 +740,13 @@
     "sentry.organizationintegration",
     "sentry.project",
     "sentry.repository"
+  ],
+  "sentry.rollbackorganization": [
+    "sentry.organization"
+  ],
+  "sentry.rollbackuser": [
+    "sentry.organization",
+    "sentry.user"
   ],
   "sentry.rule": [
     "sentry.environment",
@@ -845,24 +866,52 @@
     "sentry.user"
   ],
   "uptime.projectuptimesubscription": [
+    "sentry.environment",
     "sentry.project",
     "sentry.team",
     "sentry.user",
     "uptime.uptimesubscription"
   ],
   "uptime.uptimesubscription": [],
+  "workflow_engine.action": [
+    "sentry.integration"
+  ],
+  "workflow_engine.datacondition": [
+    "workflow_engine.dataconditiongroup"
+  ],
+  "workflow_engine.dataconditiongroup": [
+    "sentry.organization"
+  ],
+  "workflow_engine.dataconditiongroupaction": [
+    "workflow_engine.action",
+    "workflow_engine.dataconditiongroup"
+  ],
   "workflow_engine.datasource": [
     "sentry.organization"
+  ],
+  "workflow_engine.datasourcedetector": [
+    "workflow_engine.datasource",
+    "workflow_engine.detector"
   ],
   "workflow_engine.detector": [
     "sentry.organization",
     "sentry.team",
-    "sentry.user"
+    "sentry.user",
+    "workflow_engine.dataconditiongroup"
+  ],
+  "workflow_engine.detectorstate": [
+    "workflow_engine.detector"
+  ],
+  "workflow_engine.detectorworkflow": [
+    "workflow_engine.detector",
+    "workflow_engine.workflow"
   ],
   "workflow_engine.workflow": [
-    "sentry.organization"
+    "sentry.organization",
+    "workflow_engine.dataconditiongroup"
   ],
-  "workflow_engine.workflowaction": [
+  "workflow_engine.workflowdataconditiongroup": [
+    "workflow_engine.dataconditiongroup",
     "workflow_engine.workflow"
   ]
 }

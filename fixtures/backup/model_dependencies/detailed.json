@@ -31,6 +31,24 @@
       ]
     ]
   },
+  "flags.flagauditlogmodel": {
+    "dangling": false,
+    "foreign_keys": {
+      "organization_id": {
+        "kind": "HybridCloudForeignKey",
+        "model": "sentry.organization",
+        "nullable": false
+      }
+    },
+    "model": "flags.flagauditlogmodel",
+    "relocation_dependencies": [],
+    "relocation_scope": "Excluded",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "flags_audit_log",
+    "uniques": []
+  },
   "hybridcloud.apikeyreplica": {
     "dangling": false,
     "foreign_keys": {
@@ -599,6 +617,11 @@
         "model": "sentry.apiapplication",
         "nullable": true
       },
+      "organization_id": {
+        "kind": "HybridCloudForeignKey",
+        "model": "sentry.organization",
+        "nullable": true
+      },
       "user": {
         "kind": "FlexibleForeignKey",
         "model": "sentry.user",
@@ -629,6 +652,11 @@
         "kind": "FlexibleForeignKey",
         "model": "sentry.apiapplication",
         "nullable": false
+      },
+      "organization_id": {
+        "kind": "HybridCloudForeignKey",
+        "model": "sentry.organization",
+        "nullable": true
       },
       "user": {
         "kind": "FlexibleForeignKey",
@@ -673,6 +701,11 @@
       "application": {
         "kind": "FlexibleForeignKey",
         "model": "sentry.apiapplication",
+        "nullable": true
+      },
+      "scoping_organization_id": {
+        "kind": "HybridCloudForeignKey",
+        "model": "sentry.organization",
         "nullable": true
       },
       "user": {
@@ -980,7 +1013,13 @@
   },
   "sentry.broadcast": {
     "dangling": false,
-    "foreign_keys": {},
+    "foreign_keys": {
+      "created_by_id": {
+        "kind": "FlexibleForeignKey",
+        "model": "sentry.user",
+        "nullable": true
+      }
+    },
     "model": "sentry.broadcast",
     "relocation_dependencies": [],
     "relocation_scope": "Excluded",
@@ -1365,6 +1404,56 @@
       [
         "organization",
         "title"
+      ]
+    ]
+  },
+  "sentry.dashboardpermissions": {
+    "dangling": false,
+    "foreign_keys": {
+      "dashboard": {
+        "kind": "DefaultOneToOneField",
+        "model": "sentry.dashboard",
+        "nullable": false
+      }
+    },
+    "model": "sentry.dashboardpermissions",
+    "relocation_dependencies": [],
+    "relocation_scope": "Organization",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "sentry_dashboardpermissions",
+    "uniques": [
+      [
+        "dashboard"
+      ]
+    ]
+  },
+  "sentry.dashboardpermissionsteam": {
+    "dangling": false,
+    "foreign_keys": {
+      "permissions": {
+        "kind": "FlexibleForeignKey",
+        "model": "sentry.dashboardpermissions",
+        "nullable": false
+      },
+      "team": {
+        "kind": "FlexibleForeignKey",
+        "model": "sentry.team",
+        "nullable": false
+      }
+    },
+    "model": "sentry.dashboardpermissionsteam",
+    "relocation_dependencies": [],
+    "relocation_scope": "Organization",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "sentry_dashboardpermissionsteam",
+    "uniques": [
+      [
+        "permissions",
+        "team"
       ]
     ]
   },
@@ -2313,6 +2402,11 @@
         "kind": "DefaultOneToOneField",
         "model": "sentry.grouphash",
         "nullable": false
+      },
+      "seer_matched_grouphash": {
+        "kind": "FlexibleForeignKey",
+        "model": "sentry.grouphash",
+        "nullable": true
       }
     },
     "model": "sentry.grouphashmetadata",
@@ -4796,11 +4890,6 @@
         "kind": "HybridCloudForeignKey",
         "model": "sentry.user",
         "nullable": true
-      },
-      "project_id": {
-        "kind": "ImplicitForeignKey",
-        "model": "sentry.project",
-        "nullable": true
       }
     },
     "model": "sentry.release",
@@ -5264,6 +5353,62 @@
       [
         "project",
         "stack_root"
+      ]
+    ]
+  },
+  "sentry.rollbackorganization": {
+    "dangling": false,
+    "foreign_keys": {
+      "organization": {
+        "kind": "FlexibleForeignKey",
+        "model": "sentry.organization",
+        "nullable": false
+      }
+    },
+    "model": "sentry.rollbackorganization",
+    "relocation_dependencies": [],
+    "relocation_scope": "Excluded",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "sentry_rollbackorganization",
+    "uniques": [
+      [
+        "organization_id"
+      ]
+    ]
+  },
+  "sentry.rollbackuser": {
+    "dangling": false,
+    "foreign_keys": {
+      "organization": {
+        "kind": "FlexibleForeignKey",
+        "model": "sentry.organization",
+        "nullable": false
+      },
+      "user_id": {
+        "kind": "HybridCloudForeignKey",
+        "model": "sentry.user",
+        "nullable": false
+      }
+    },
+    "model": "sentry.rollbackuser",
+    "relocation_dependencies": [],
+    "relocation_scope": "Excluded",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "sentry_rollbackuser",
+    "uniques": [
+      [
+        "organization_id",
+        "user_id"
+      ],
+      [
+        "share_uuid"
+      ],
+      [
+        "uuid"
       ]
     ]
   },
@@ -6145,6 +6290,11 @@
   "uptime.projectuptimesubscription": {
     "dangling": false,
     "foreign_keys": {
+      "environment": {
+        "kind": "FlexibleForeignKey",
+        "model": "sentry.environment",
+        "nullable": true
+      },
       "owner_team": {
         "kind": "FlexibleForeignKey",
         "model": "sentry.team",
@@ -6191,14 +6341,88 @@
     ],
     "table_name": "uptime_uptimesubscription",
     "uniques": [
-      [
-        "interval_seconds",
-        "url"
-      ],
+      [],
       [
         "subscription_id"
       ]
     ]
+  },
+  "workflow_engine.action": {
+    "dangling": false,
+    "foreign_keys": {
+      "integration_id": {
+        "kind": "HybridCloudForeignKey",
+        "model": "sentry.integration",
+        "nullable": true
+      }
+    },
+    "model": "workflow_engine.action",
+    "relocation_dependencies": [],
+    "relocation_scope": "Excluded",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "workflow_engine_action",
+    "uniques": []
+  },
+  "workflow_engine.datacondition": {
+    "dangling": false,
+    "foreign_keys": {
+      "condition_group": {
+        "kind": "DefaultForeignKey",
+        "model": "workflow_engine.dataconditiongroup",
+        "nullable": false
+      }
+    },
+    "model": "workflow_engine.datacondition",
+    "relocation_dependencies": [],
+    "relocation_scope": "Organization",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "workflow_engine_datacondition",
+    "uniques": []
+  },
+  "workflow_engine.dataconditiongroup": {
+    "dangling": false,
+    "foreign_keys": {
+      "organization": {
+        "kind": "DefaultForeignKey",
+        "model": "sentry.organization",
+        "nullable": false
+      }
+    },
+    "model": "workflow_engine.dataconditiongroup",
+    "relocation_dependencies": [],
+    "relocation_scope": "Organization",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "workflow_engine_dataconditiongroup",
+    "uniques": []
+  },
+  "workflow_engine.dataconditiongroupaction": {
+    "dangling": false,
+    "foreign_keys": {
+      "action": {
+        "kind": "FlexibleForeignKey",
+        "model": "workflow_engine.action",
+        "nullable": false
+      },
+      "condition_group": {
+        "kind": "FlexibleForeignKey",
+        "model": "workflow_engine.dataconditiongroup",
+        "nullable": false
+      }
+    },
+    "model": "workflow_engine.dataconditiongroupaction",
+    "relocation_dependencies": [],
+    "relocation_scope": "Excluded",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "workflow_engine_dataconditiongroupaction",
+    "uniques": []
   },
   "workflow_engine.datasource": {
     "dangling": false,
@@ -6218,6 +6442,34 @@
     "table_name": "workflow_engine_datasource",
     "uniques": []
   },
+  "workflow_engine.datasourcedetector": {
+    "dangling": false,
+    "foreign_keys": {
+      "data_source": {
+        "kind": "FlexibleForeignKey",
+        "model": "workflow_engine.datasource",
+        "nullable": false
+      },
+      "detector": {
+        "kind": "FlexibleForeignKey",
+        "model": "workflow_engine.detector",
+        "nullable": false
+      }
+    },
+    "model": "workflow_engine.datasourcedetector",
+    "relocation_dependencies": [],
+    "relocation_scope": "Organization",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "workflow_engine_datasourcedetector",
+    "uniques": [
+      [
+        "data_source",
+        "detector"
+      ]
+    ]
+  },
   "workflow_engine.detector": {
     "dangling": false,
     "foreign_keys": {
@@ -6235,6 +6487,11 @@
         "kind": "HybridCloudForeignKey",
         "model": "sentry.user",
         "nullable": true
+      },
+      "workflow_condition_group": {
+        "kind": "FlexibleForeignKey",
+        "model": "workflow_engine.dataconditiongroup",
+        "nullable": true
       }
     },
     "model": "workflow_engine.detector",
@@ -6248,8 +6505,54 @@
       [
         "name",
         "organization"
+      ],
+      [
+        "workflow_condition_group"
       ]
     ]
+  },
+  "workflow_engine.detectorstate": {
+    "dangling": false,
+    "foreign_keys": {
+      "detector": {
+        "kind": "FlexibleForeignKey",
+        "model": "workflow_engine.detector",
+        "nullable": false
+      }
+    },
+    "model": "workflow_engine.detectorstate",
+    "relocation_dependencies": [],
+    "relocation_scope": "Excluded",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "workflow_engine_detectorstate",
+    "uniques": [
+      []
+    ]
+  },
+  "workflow_engine.detectorworkflow": {
+    "dangling": false,
+    "foreign_keys": {
+      "detector": {
+        "kind": "FlexibleForeignKey",
+        "model": "workflow_engine.detector",
+        "nullable": false
+      },
+      "workflow": {
+        "kind": "FlexibleForeignKey",
+        "model": "workflow_engine.workflow",
+        "nullable": false
+      }
+    },
+    "model": "workflow_engine.detectorworkflow",
+    "relocation_dependencies": [],
+    "relocation_scope": "Organization",
+    "silos": [
+      "Region"
+    ],
+    "table_name": "workflow_engine_detectorworkflow",
+    "uniques": []
   },
   "workflow_engine.workflow": {
     "dangling": false,
@@ -6258,6 +6561,11 @@
         "kind": "FlexibleForeignKey",
         "model": "sentry.organization",
         "nullable": false
+      },
+      "when_condition_group": {
+        "kind": "FlexibleForeignKey",
+        "model": "workflow_engine.dataconditiongroup",
+        "nullable": true
       }
     },
     "model": "workflow_engine.workflow",
@@ -6274,22 +6582,31 @@
       ]
     ]
   },
-  "workflow_engine.workflowaction": {
+  "workflow_engine.workflowdataconditiongroup": {
     "dangling": false,
     "foreign_keys": {
+      "condition_group": {
+        "kind": "FlexibleForeignKey",
+        "model": "workflow_engine.dataconditiongroup",
+        "nullable": false
+      },
       "workflow": {
         "kind": "FlexibleForeignKey",
         "model": "workflow_engine.workflow",
         "nullable": false
       }
     },
-    "model": "workflow_engine.workflowaction",
+    "model": "workflow_engine.workflowdataconditiongroup",
     "relocation_dependencies": [],
     "relocation_scope": "Organization",
     "silos": [
       "Region"
     ],
-    "table_name": "workflow_engine_workflowaction",
-    "uniques": []
+    "table_name": "workflow_engine_workflowdataconditiongroup",
+    "uniques": [
+      [
+        "condition_group"
+      ]
+    ]
   }
 }

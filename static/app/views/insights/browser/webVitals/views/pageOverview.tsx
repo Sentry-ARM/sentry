@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from 'react';
+import React, {Fragment, useMemo, useState} from 'react';
 import styled from '@emotion/styled';
 import omit from 'lodash/omit';
 
@@ -9,10 +9,6 @@ import ButtonBar from 'sentry/components/buttonBar';
 import {AggregateSpans} from 'sentry/components/events/interfaces/spans/aggregateSpans';
 import FeedbackWidgetButton from 'sentry/components/feedback/widget/feedbackWidgetButton';
 import * as Layout from 'sentry/components/layouts/thirds';
-import {DatePageFilter} from 'sentry/components/organizations/datePageFilter';
-import {EnvironmentPageFilter} from 'sentry/components/organizations/environmentPageFilter';
-import PageFilterBar from 'sentry/components/organizations/pageFilterBar';
-import {ProjectPageFilter} from 'sentry/components/organizations/projectPageFilter';
 import {TabList, Tabs} from 'sentry/components/tabs';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
@@ -35,11 +31,18 @@ import {calculatePerformanceScoreFromStoredTableDataRow} from 'sentry/views/insi
 import {useProjectWebVitalsScoresQuery} from 'sentry/views/insights/browser/webVitals/queries/storedScoreQueries/useProjectWebVitalsScoresQuery';
 import type {WebVitals} from 'sentry/views/insights/browser/webVitals/types';
 import decodeBrowserTypes from 'sentry/views/insights/browser/webVitals/utils/queryParameterDecoders/browserType';
+import {ModulePageFilterBar} from 'sentry/views/insights/common/components/modulePageFilterBar';
 import {ModulePageProviders} from 'sentry/views/insights/common/components/modulePageProviders';
+import {ModuleBodyUpsellHook} from 'sentry/views/insights/common/components/moduleUpsellHookWrapper';
 import {useModuleBreadcrumbs} from 'sentry/views/insights/common/utils/useModuleBreadcrumbs';
 import {useModuleURL} from 'sentry/views/insights/common/utils/useModuleURL';
-import SubregionSelector from 'sentry/views/insights/common/views/spans/selectors/subregionSelector';
-import {SpanIndexedField, type SubregionCode} from 'sentry/views/insights/types';
+import {FrontendHeader} from 'sentry/views/insights/pages/frontend/frontendPageHeader';
+import {useDomainViewFilters} from 'sentry/views/insights/pages/useFilters';
+import {
+  ModuleName,
+  SpanIndexedField,
+  type SubregionCode,
+} from 'sentry/views/insights/types';
 import {transactionSummaryRouteWithQuery} from 'sentry/views/performance/transactionSummary/utils';
 
 export enum LandingDisplayField {
@@ -72,6 +75,7 @@ export function PageOverview() {
   const location = useLocation();
   const {projects} = useProjects();
   const router = useRouter();
+  const {isInDomainView, view} = useDomainViewFilters();
   const transaction = location.query.transaction
     ? Array.isArray(location.query.transaction)
       ? location.query.transaction[0]
@@ -122,6 +126,7 @@ export function PageOverview() {
       transaction,
       query: {...location.query},
       projectID: project.id,
+      view,
     });
 
   const projectScore =
@@ -129,38 +134,69 @@ export function PageOverview() {
       ? undefined
       : calculatePerformanceScoreFromStoredTableDataRow(projectScores?.data?.[0]);
 
+  const handleTabChange = (value: string) => {
+    trackAnalytics('insight.vital.overview.toggle_tab', {
+      organization,
+      tab: value,
+    });
+    browserHistory.push({
+      ...location,
+      query: {
+        ...location.query,
+        tab: value,
+      },
+    });
+  };
+
   return (
     <React.Fragment>
-      <Tabs
-        value={tab}
-        onChange={value => {
-          trackAnalytics('insight.vital.overview.toggle_tab', {
-            organization,
-            tab: value,
-          });
-          browserHistory.push({
-            ...location,
-            query: {
-              ...location.query,
-              tab: value,
-            },
-          });
-        }}
-      >
-        <Layout.Header>
-          <Layout.HeaderContent>
-            <Breadcrumbs
-              crumbs={[...crumbs, ...(transaction ? [{label: 'Page Summary'}] : [])]}
-            />
-            <Layout.Title>
-              {transaction && project && <ProjectAvatar project={project} size={24} />}
-              {transaction ?? t('Page Loads')}
-            </Layout.Title>
-          </Layout.HeaderContent>
-          <Layout.HeaderActions>
-            <ButtonBar gap={1}>
-              <FeedbackWidgetButton />
-              {transactionSummaryTarget && (
+      <Tabs value={tab} onChange={handleTabChange}>
+        {!isInDomainView && (
+          <Layout.Header>
+            <Layout.HeaderContent>
+              <Breadcrumbs
+                crumbs={[...crumbs, ...(transaction ? [{label: 'Page Summary'}] : [])]}
+              />
+              <Layout.Title>
+                {transaction && project && <ProjectAvatar project={project} size={24} />}
+                {transaction ?? t('Page Loads')}
+              </Layout.Title>
+            </Layout.HeaderContent>
+            <Layout.HeaderActions>
+              <ButtonBar gap={1}>
+                <FeedbackWidgetButton />
+                {transactionSummaryTarget && (
+                  <LinkButton
+                    to={transactionSummaryTarget}
+                    onClick={() => {
+                      trackAnalytics('insight.vital.overview.open_transaction_summary', {
+                        organization,
+                      });
+                    }}
+                    size="sm"
+                  >
+                    {t('View Transaction Summary')}
+                  </LinkButton>
+                )}
+              </ButtonBar>
+            </Layout.HeaderActions>
+            <TabList hideBorder>
+              {LANDING_DISPLAYS.map(({label, field}) => (
+                <TabList.Item key={field}>{label}</TabList.Item>
+              ))}
+            </TabList>
+          </Layout.Header>
+        )}
+        {isInDomainView && (
+          <FrontendHeader
+            headerTitle={
+              <Fragment>
+                {transaction && project && <ProjectAvatar project={project} size={24} />}
+                {transaction ?? t('Page Loads')}
+              </Fragment>
+            }
+            headerActions={
+              transactionSummaryTarget && (
                 <LinkButton
                   to={transactionSummaryTarget}
                   onClick={() => {
@@ -172,74 +208,80 @@ export function PageOverview() {
                 >
                   {t('View Transaction Summary')}
                 </LinkButton>
-              )}
-            </ButtonBar>
-          </Layout.HeaderActions>
-          <TabList hideBorder>
-            {LANDING_DISPLAYS.map(({label, field}) => (
-              <TabList.Item key={field}>{label}</TabList.Item>
-            ))}
-          </TabList>
-        </Layout.Header>
-        {tab === LandingDisplayField.SPANS ? (
-          <Layout.Body>
-            <Layout.Main fullWidth>
-              {defined(transaction) && <AggregateSpans transaction={transaction} />}
-            </Layout.Main>
-          </Layout.Body>
-        ) : (
-          <Layout.Body>
-            <Layout.Main>
-              <TopMenuContainer>
-                <PageFilterBar condensed>
-                  <ProjectPageFilter />
-                  <EnvironmentPageFilter />
-                  <DatePageFilter />
-                </PageFilterBar>
-                <BrowserTypeSelector />
-                <SubregionSelector />
-              </TopMenuContainer>
-              <Flex>
-                <PerformanceScoreBreakdownChart
+              )
+            }
+            hideDefaultTabs
+            tabs={{
+              value: tab,
+              onTabChange: handleTabChange,
+              tabList: (
+                <TabList hideBorder>
+                  {LANDING_DISPLAYS.map(({label, field}) => (
+                    <TabList.Item key={field}>{label}</TabList.Item>
+                  ))}
+                </TabList>
+              ),
+            }}
+            breadcrumbs={transaction ? [{label: 'Page Summary'}] : []}
+            module={ModuleName.VITAL}
+          />
+        )}
+        <ModuleBodyUpsellHook moduleName={ModuleName.VITAL}>
+          {tab === LandingDisplayField.SPANS ? (
+            <Layout.Body>
+              <Layout.Main fullWidth>
+                {defined(transaction) && <AggregateSpans transaction={transaction} />}
+              </Layout.Main>
+            </Layout.Body>
+          ) : (
+            <Layout.Body>
+              <Layout.Main>
+                <TopMenuContainer>
+                  <ModulePageFilterBar moduleName={ModuleName.VITAL} />
+                  <BrowserTypeSelector />
+                </TopMenuContainer>
+                <Flex>
+                  <PerformanceScoreBreakdownChart
+                    transaction={transaction}
+                    browserTypes={browserTypes}
+                    subregions={subregions}
+                  />
+                </Flex>
+                <WebVitalMetersContainer>
+                  <WebVitalMeters
+                    projectData={pageData}
+                    projectScore={projectScore}
+                    onClick={webVital => {
+                      router.replace({
+                        pathname: location.pathname,
+                        query: {...location.query, webVital},
+                      });
+                      setState({...state, webVital});
+                    }}
+                    transaction={transaction}
+                    showTooltip={false}
+                  />
+                </WebVitalMetersContainer>
+                <PageSamplePerformanceTableContainer>
+                  <PageSamplePerformanceTable
+                    transaction={transaction}
+                    limit={15}
+                    search={query}
+                  />
+                </PageSamplePerformanceTableContainer>
+              </Layout.Main>
+              <Layout.Side>
+                <PageOverviewSidebar
+                  projectScore={projectScore}
                   transaction={transaction}
+                  projectScoreIsLoading={isPending}
                   browserTypes={browserTypes}
                   subregions={subregions}
                 />
-              </Flex>
-              <WebVitalMetersContainer>
-                <WebVitalMeters
-                  projectData={pageData}
-                  projectScore={projectScore}
-                  onClick={webVital => {
-                    router.replace({
-                      pathname: location.pathname,
-                      query: {...location.query, webVital},
-                    });
-                    setState({...state, webVital});
-                  }}
-                  transaction={transaction}
-                  showTooltip={false}
-                />
-              </WebVitalMetersContainer>
-              <PageSamplePerformanceTableContainer>
-                <PageSamplePerformanceTable
-                  transaction={transaction}
-                  limit={15}
-                  search={query}
-                />
-              </PageSamplePerformanceTableContainer>
-            </Layout.Main>
-            <Layout.Side>
-              <PageOverviewSidebar
-                projectScore={projectScore}
-                transaction={transaction}
-                projectScoreIsLoading={isPending}
-                browserTypes={browserTypes}
-                subregions={subregions}
-              />
-            </Layout.Side>
-          </Layout.Body>
-        )}
+              </Layout.Side>
+            </Layout.Body>
+          )}
+        </ModuleBodyUpsellHook>
         <PageOverviewWebVitalsDetailPanel
           webVital={state.webVital}
           onClose={() => {
@@ -284,5 +326,5 @@ const PageSamplePerformanceTableContainer = styled('div')`
 `;
 
 const WebVitalMetersContainer = styled('div')`
-  margin: ${space(2)} 0 ${space(4)} 0;
+  margin: ${space(2)} 0;
 `;

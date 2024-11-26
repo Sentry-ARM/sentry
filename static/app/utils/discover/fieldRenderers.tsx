@@ -45,6 +45,7 @@ import {
 import {getShortEventId} from 'sentry/utils/events';
 import {formatRate} from 'sentry/utils/formatters';
 import getDynamicText from 'sentry/utils/getDynamicText';
+import {formatApdex} from 'sentry/utils/number/formatApdex';
 import {formatFloat} from 'sentry/utils/number/formatFloat';
 import {formatPercentage} from 'sentry/utils/number/formatPercentage';
 import toPercent from 'sentry/utils/number/toPercent';
@@ -310,7 +311,15 @@ export const FIELD_FORMATTERS: FieldFormatters = {
           </Container>
         );
       }
-      return <Container>{nullableValue(value)}</Container>;
+
+      const content =
+        value && typeof value === 'string' ? (
+          <span title={value}>{nullableValue(value)}</span>
+        ) : (
+          nullableValue(value)
+        );
+
+      return <Container>{content}</Container>;
     },
   },
   array: {
@@ -339,6 +348,7 @@ type SpecialField = {
 };
 
 type SpecialFields = {
+  'apdex()': SpecialField;
   attachments: SpecialField;
   'count_unique(user)': SpecialField;
   'error.handled': SpecialField;
@@ -351,6 +361,7 @@ type SpecialFields = {
   release: SpecialField;
   replayId: SpecialField;
   'span.status_code': SpecialField;
+  span_id: SpecialField;
   team_key_transaction: SpecialField;
   'timestamp.to_day': SpecialField;
   'timestamp.to_hour': SpecialField;
@@ -376,6 +387,18 @@ const RightAlignedContainer = styled('span')`
 const SPECIAL_FIELDS: SpecialFields = {
   // This is a custom renderer for a field outside discover
   // TODO - refactor code and remove from this file or add ability to query for attachments in Discover
+  'apdex()': {
+    sortField: 'apdex()',
+    renderFunc: data => {
+      const field = 'apdex()';
+
+      return (
+        <NumberContainer>
+          {typeof data[field] === 'number' ? formatApdex(data[field]) : emptyValue}
+        </NumberContainer>
+      );
+    },
+  },
   attachments: {
     sortField: null,
     renderFunc: (data, {organization, projectSlug}) => {
@@ -452,6 +475,17 @@ const SPECIAL_FIELDS: SpecialFields = {
       }
 
       return <Container>{getShortEventId(id)}</Container>;
+    },
+  },
+  span_id: {
+    sortField: 'span_id',
+    renderFunc: data => {
+      const spanId: string | unknown = data?.span_id;
+      if (typeof spanId !== 'string') {
+        return null;
+      }
+
+      return <Container>{getShortEventId(spanId)}</Container>;
     },
   },
   trace: {
@@ -990,7 +1024,7 @@ export function getFieldRenderer(
   }
 
   const fieldName = isAlias ? getAggregateAlias(field) : field;
-  const fieldType = meta[fieldName];
+  const fieldType = meta[fieldName] || meta.fields?.[fieldName];
 
   for (const alias in SPECIAL_FUNCTIONS) {
     if (fieldName.startsWith(alias)) {
@@ -1024,7 +1058,7 @@ export function getFieldFormatter(
   isAlias: boolean = true
 ): FieldTypeFormatterRenderFunctionPartial {
   const fieldName = isAlias ? getAggregateAlias(field) : field;
-  const fieldType = meta[fieldName];
+  const fieldType = meta[fieldName] || meta.fields?.[fieldName];
 
   if (FIELD_FORMATTERS.hasOwnProperty(fieldType)) {
     return partial(FIELD_FORMATTERS[fieldType].renderFunc, fieldName);

@@ -2,58 +2,58 @@ import {useLayoutEffect, useState} from 'react';
 import {useTheme} from '@emotion/react';
 import styled from '@emotion/styled';
 
-import {CommitRow} from 'sentry/components/commitRow';
 import ErrorBoundary from 'sentry/components/errorBoundary';
-import {SuspectCommits} from 'sentry/components/events/suspectCommits';
-import {DatePageFilter} from 'sentry/components/organizations/datePageFilter';
-import {EnvironmentPageFilter} from 'sentry/components/organizations/environmentPageFilter';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
-import {useLocation} from 'sentry/utils/useLocation';
+import type {Event} from 'sentry/types/event';
+import type {Group} from 'sentry/types/group';
+import {useIsStuck} from 'sentry/utils/useIsStuck';
 import useMedia from 'sentry/utils/useMedia';
-import {useNavigate} from 'sentry/utils/useNavigate';
-import usePageFilters from 'sentry/utils/usePageFilters';
 import {
   EventDetailsContent,
   type EventDetailsContentProps,
 } from 'sentry/views/issueDetails/groupEventDetails/groupEventDetailsContent';
 import {
   EventDetailsContext,
+  useEventDetails,
   useEventDetailsReducer,
 } from 'sentry/views/issueDetails/streamline/context';
-import {EventGraph} from 'sentry/views/issueDetails/streamline/eventGraph';
-import {EventNavigation} from 'sentry/views/issueDetails/streamline/eventNavigation';
-import {
-  EventSearch,
-  useEventQuery,
-} from 'sentry/views/issueDetails/streamline/eventSearch';
-import {useFetchEventStats} from 'sentry/views/issueDetails/streamline/useFetchEvents';
+import {EventTitle} from 'sentry/views/issueDetails/streamline/eventTitle';
 
 export function EventDetails({
   group,
   event,
   project,
 }: Required<EventDetailsContentProps>) {
-  const theme = useTheme();
-  const location = useLocation();
-  const navigate = useNavigate();
-  const {selection} = usePageFilters();
-  const isScreenMedium = useMedia(`(max-width: ${theme.breakpoints.medium})`);
-  const {environments} = selection;
-  const [nav, setNav] = useState<HTMLDivElement | null>(null);
-
-  const searchQuery = useEventQuery({group});
   const {eventDetails, dispatch} = useEventDetailsReducer();
-  const {data: groupStats, isPending: isLoadingStats} = useFetchEventStats({
-    params: {
-      group: group,
-      referrer: 'issue_details.streamline',
-      query: searchQuery,
-    },
-  });
+
+  return (
+    <EventDetailsContext.Provider value={{...eventDetails, dispatch}}>
+      <PageErrorBoundary mini message={t('There was an error loading the event content')}>
+        <GroupContent role="main">
+          <StickyEventNav event={event} group={group} />
+          <ContentPadding>
+            <EventDetailsContent group={group} event={event} project={project} />
+          </ContentPadding>
+        </GroupContent>
+      </PageErrorBoundary>
+    </EventDetailsContext.Provider>
+  );
+}
+
+function StickyEventNav({event, group}: {event: Event; group: Group}) {
+  const theme = useTheme();
+  const [nav, setNav] = useState<HTMLDivElement | null>(null);
+  const isStuck = useIsStuck(nav);
+  const isScreenMedium = useMedia(`(max-width: ${theme.breakpoints.medium})`);
+  const {dispatch} = useEventDetails();
 
   useLayoutEffect(() => {
-    const navHeight = nav?.offsetHeight ?? 0;
+    if (!nav) {
+      return;
+    }
+
+    const navHeight = nav.offsetHeight ?? 0;
     const sidebarHeight = isScreenMedium ? theme.sidebar.mobileHeightNumber : 0;
     dispatch({
       type: 'UPDATE_DETAILS',
@@ -62,89 +62,42 @@ export function EventDetails({
   }, [nav, isScreenMedium, dispatch, theme.sidebar.mobileHeightNumber]);
 
   return (
-    <EventDetailsContext.Provider value={{...eventDetails, dispatch}}>
-      <ErrorBoundary mini message={t('There was an error loading the suspect commits')}>
-        <SuspectCommits
-          project={project}
-          eventId={event.id}
-          group={group}
-          commitRow={CommitRow}
-        />
-      </ErrorBoundary>
-      <ErrorBoundary mini message={t('There was an error loading the event filters')}>
-        <FilterContainer>
-          <EnvironmentPageFilter />
-          <SearchFilter
-            group={group}
-            handleSearch={query => {
-              navigate({...location, query: {...location.query, query}}, {replace: true});
-            }}
-            environments={environments}
-            query={searchQuery}
-            queryBuilderProps={{
-              disallowFreeText: true,
-            }}
-          />
-          <DatePageFilter />
-        </FilterContainer>
-      </ErrorBoundary>
-      {!isLoadingStats && groupStats && (
-        <GraphPadding>
-          <ErrorBoundary mini message={t('There was an error loading the event graph')}>
-            <EventGraph groupStats={groupStats} />
-          </ErrorBoundary>
-        </GraphPadding>
-      )}
-      <GroupContent navHeight={nav?.offsetHeight}>
-        <FloatingEventNavigation
-          event={event}
-          group={group}
-          ref={setNav}
-          query={searchQuery}
-        />
-        <GroupContentPadding>
-          <EventDetailsContent group={group} event={event} project={project} />
-        </GroupContentPadding>
-      </GroupContent>
-    </EventDetailsContext.Provider>
+    <FloatingEventNavigation
+      event={event}
+      group={group}
+      ref={setNav}
+      data-stuck={isStuck}
+    />
   );
 }
 
-const FloatingEventNavigation = styled(EventNavigation)`
+const FloatingEventNavigation = styled(EventTitle)`
   position: sticky;
   top: 0;
   @media (max-width: ${p => p.theme.breakpoints.medium}) {
     top: ${p => p.theme.sidebar.mobileHeight};
   }
   background: ${p => p.theme.background};
-  z-index: 100;
-  border-radius: 6px 6px 0 0;
+  z-index: ${p => p.theme.zIndex.header};
+  border-radius: ${p => p.theme.borderRadiusTop};
+
+  &[data-stuck='true'] {
+    border-radius: 0;
+  }
 `;
 
-const SearchFilter = styled(EventSearch)`
-  border-radius: ${p => p.theme.borderRadius};
-`;
-
-const GraphPadding = styled('div')`
-  border: 1px solid ${p => p.theme.translucentBorder};
-  background: ${p => p.theme.background};
-  border-radius: ${p => p.theme.borderRadius};
-  padding: ${space(1.5)} ${space(1)};
-`;
-
-const GroupContent = styled('div')<{navHeight?: number}>`
-  border: 1px solid ${p => p.theme.translucentBorder};
-  background: ${p => p.theme.background};
-  border-radius: ${p => p.theme.borderRadius};
+const GroupContent = styled('div')`
   position: relative;
+  border: 1px solid ${p => p.theme.translucentBorder};
+  background: ${p => p.theme.background};
+  border-radius: ${p => p.theme.borderRadius};
 `;
 
-const GroupContentPadding = styled('div')`
+const ContentPadding = styled('div')`
   padding: ${space(1)} ${space(1.5)};
 `;
 
-const FilterContainer = styled('div')`
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: ${space(1)};
+const PageErrorBoundary = styled(ErrorBoundary)`
+  margin: 0;
+  border: 1px solid ${p => p.theme.translucentBorder};
 `;

@@ -10,12 +10,14 @@ import FeedbackOnboardingSidebar from 'sentry/components/feedback/feedbackOnboar
 import Hook from 'sentry/components/hook';
 import {OnboardingContext} from 'sentry/components/onboarding/onboardingContext';
 import {getMergedTasks} from 'sentry/components/onboardingWizard/taskConfig';
+import {hasQuickStartUpdatesFeature} from 'sentry/components/onboardingWizard/utils';
 import PerformanceOnboardingSidebar from 'sentry/components/performanceOnboarding/sidebar';
 import ReplaysOnboardingSidebar from 'sentry/components/replaysOnboarding/sidebar';
 import {
   ExpandedContext,
   ExpandedContextProvider,
 } from 'sentry/components/sidebar/expandedContextProvider';
+import {NewOnboardingStatus} from 'sentry/components/sidebar/newOnboardingStatus';
 import {isDone} from 'sentry/components/sidebar/utils';
 import {
   IconDashboard,
@@ -41,7 +43,7 @@ import SidebarPanelStore from 'sentry/stores/sidebarPanelStore';
 import {useLegacyStore} from 'sentry/stores/useLegacyStore';
 import {space} from 'sentry/styles/space';
 import type {Organization} from 'sentry/types/organization';
-import {isDemoWalkthrough} from 'sentry/utils/demoMode';
+import {isDemoModeEnabled} from 'sentry/utils/demoMode';
 import {getDiscoverLandingUrl} from 'sentry/utils/discover/urls';
 import {isActiveSuperuser} from 'sentry/utils/isActiveSuperuser';
 import {hasCustomMetrics} from 'sentry/utils/metrics/features';
@@ -53,12 +55,33 @@ import useOrganization from 'sentry/utils/useOrganization';
 import useProjects from 'sentry/utils/useProjects';
 import {useModuleURLBuilder} from 'sentry/views/insights/common/utils/useModuleURL';
 import {MODULE_SIDEBAR_TITLE as HTTP_MODULE_SIDEBAR_TITLE} from 'sentry/views/insights/http/settings';
+import {
+  AI_LANDING_SUB_PATH,
+  AI_SIDEBAR_LABEL,
+} from 'sentry/views/insights/pages/ai/settings';
+import {
+  BACKEND_LANDING_SUB_PATH,
+  BACKEND_SIDEBAR_LABEL,
+} from 'sentry/views/insights/pages/backend/settings';
+import {
+  FRONTEND_LANDING_SUB_PATH,
+  FRONTEND_SIDEBAR_LABEL,
+} from 'sentry/views/insights/pages/frontend/settings';
+import {
+  MOBILE_LANDING_SUB_PATH,
+  MOBILE_SIDEBAR_LABEL,
+} from 'sentry/views/insights/pages/mobile/settings';
+import {
+  DOMAIN_VIEW_BASE_TITLE,
+  DOMAIN_VIEW_BASE_URL,
+} from 'sentry/views/insights/pages/settings';
 import {MODULE_TITLES} from 'sentry/views/insights/settings';
 import MetricsOnboardingSidebar from 'sentry/views/metrics/ddmOnboarding/sidebar';
+import {getPerformanceBaseUrl} from 'sentry/views/performance/utils';
 
 import {ProfilingOnboardingSidebar} from '../profiling/profilingOnboardingSidebar';
 
-import Broadcasts from './broadcasts';
+import {Broadcasts} from './broadcasts';
 import SidebarHelp from './help';
 import OnboardingStatus from './onboardingStatus';
 import ServiceIncidents from './serviceIncidents';
@@ -87,16 +110,14 @@ function useOpenOnboardingSidebar(organization?: Organization) {
 
   const openOnboardingSidebar = (() => {
     if (location?.hash === '#welcome') {
-      if (organization && !ConfigStore.get('demoMode')) {
+      if (organization && !isDemoModeEnabled()) {
         const tasks = getMergedTasks({
           organization,
           projects: project,
           onboardingContext,
         });
 
-        const allDisplayedTasks = tasks
-          .filter(task => task.display)
-          .filter(task => !task.renderCard);
+        const allDisplayedTasks = tasks.filter(task => task.display);
         const doneTasks = allDisplayedTasks.filter(isDone);
 
         return !(doneTasks.length >= allDisplayedTasks.length);
@@ -122,6 +143,7 @@ function Sidebar() {
   const hasNewNav = organization?.features.includes('navigation-sidebar-v2');
   const hasOrganization = !!organization;
   const isSelfHostedErrorsOnly = ConfigStore.get('isSelfHostedErrorsOnly');
+  const hasPerfDomainViews = organization?.features.includes('insights-domain-view');
 
   const collapsed = hasNewNav ? true : !!preferences.collapsed;
   const horizontal = useMedia(`(max-width: ${theme.breakpoints.medium})`);
@@ -201,7 +223,7 @@ function Sidebar() {
     return () => bcl.remove('hasNewNav');
   }, [hasNewNav]);
 
-  const sidebarAnchor = isDemoWalkthrough() ? (
+  const sidebarAnchor = isDemoModeEnabled() ? (
     <GuideAnchor target="projects" disabled={!DemoWalkthroughStore.get('sidebar')}>
       {t('Projects')}
     </GuideAnchor>
@@ -437,7 +459,7 @@ function Sidebar() {
             {hasNewNav ? 'Perf.' : t('Performance')}
           </GuideAnchor>
         }
-        to={`/organizations/${organization.slug}/performance/`}
+        to={`${getPerformanceBaseUrl(organization.slug)}/`}
         id="performance"
       />
     </Feature>
@@ -588,7 +610,52 @@ function Sidebar() {
     />
   );
 
-  const insights = hasOrganization && (
+  const performanceDomains = hasOrganization && (
+    <Feature
+      features={['insights-domain-view', 'performance-view']}
+      organization={organization}
+    >
+      <SidebarAccordion
+        {...sidebarItemProps}
+        icon={<IconGraph />}
+        label={DOMAIN_VIEW_BASE_TITLE}
+        id="insights-domains"
+        initiallyExpanded
+        exact={!shouldAccordionFloat}
+      >
+        <SidebarItem
+          {...sidebarItemProps}
+          label={FRONTEND_SIDEBAR_LABEL}
+          to={`/organizations/${organization.slug}/${DOMAIN_VIEW_BASE_URL}/${FRONTEND_LANDING_SUB_PATH}/`}
+          id="performance-domains-web"
+          icon={<SubitemDot collapsed />}
+        />
+        <SidebarItem
+          {...sidebarItemProps}
+          label={BACKEND_SIDEBAR_LABEL}
+          to={`/organizations/${organization.slug}/${DOMAIN_VIEW_BASE_URL}/${BACKEND_LANDING_SUB_PATH}/`}
+          id="performance-domains-platform"
+          icon={<SubitemDot collapsed />}
+        />
+        <SidebarItem
+          {...sidebarItemProps}
+          label={MOBILE_SIDEBAR_LABEL}
+          to={`/organizations/${organization.slug}/${DOMAIN_VIEW_BASE_URL}/${MOBILE_LANDING_SUB_PATH}/`}
+          id="performance-domains-mobile"
+          icon={<SubitemDot collapsed />}
+        />
+        <SidebarItem
+          {...sidebarItemProps}
+          label={AI_SIDEBAR_LABEL}
+          to={`/organizations/${organization.slug}/${DOMAIN_VIEW_BASE_URL}/${AI_LANDING_SUB_PATH}/`}
+          id="performance-domains-ai"
+          icon={<SubitemDot collapsed />}
+        />
+      </SidebarAccordion>
+    </Feature>
+  );
+
+  const insights = hasOrganization && !hasPerfDomainViews && (
     <Feature key="insights" features="insights-entry-points" organization={organization}>
       <SidebarAccordion
         {...sidebarItemProps}
@@ -666,6 +733,7 @@ function Sidebar() {
                     <SidebarSection hasNewNav={hasNewNav}>
                       {explore}
                       {insights}
+                      {performanceDomains}
                     </SidebarSection>
 
                     <SidebarSection hasNewNav={hasNewNav}>
@@ -734,13 +802,22 @@ function Sidebar() {
               {...sidebarItemProps}
             />
             <SidebarSection hasNewNav={hasNewNav} noMargin noPadding>
-              <OnboardingStatus
-                org={organization}
-                currentPanel={activePanel}
-                onShowPanel={() => togglePanel(SidebarPanelKey.ONBOARDING_WIZARD)}
-                hidePanel={hidePanel}
-                {...sidebarItemProps}
-              />
+              {hasQuickStartUpdatesFeature(organization) ? (
+                <NewOnboardingStatus
+                  currentPanel={activePanel}
+                  onShowPanel={() => togglePanel(SidebarPanelKey.ONBOARDING_WIZARD)}
+                  hidePanel={hidePanel}
+                  {...sidebarItemProps}
+                />
+              ) : (
+                <OnboardingStatus
+                  org={organization}
+                  currentPanel={activePanel}
+                  onShowPanel={() => togglePanel(SidebarPanelKey.ONBOARDING_WIZARD)}
+                  hidePanel={hidePanel}
+                  {...sidebarItemProps}
+                />
+              )}
             </SidebarSection>
 
             <SidebarSection hasNewNav={hasNewNav}>
@@ -763,7 +840,6 @@ function Sidebar() {
                 currentPanel={activePanel}
                 onShowPanel={() => togglePanel(SidebarPanelKey.BROADCASTS)}
                 hidePanel={hidePanel}
-                organization={organization}
               />
               <ServiceIncidents
                 orientation={orientation}
@@ -818,7 +894,7 @@ export const SidebarWrapper = styled('nav')<{collapsed: boolean; hasNewNav?: boo
           : 'expandedWidth'
     ]};
   position: fixed;
-  top: ${p => (ConfigStore.get('demoMode') ? p.theme.demo.headerSize : 0)};
+  top: ${p => (isDemoModeEnabled() ? p.theme.demo.headerSize : 0)};
   left: 0;
   bottom: 0;
   justify-content: space-between;

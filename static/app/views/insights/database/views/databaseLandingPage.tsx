@@ -9,15 +9,16 @@ import {PageHeadingQuestionTooltip} from 'sentry/components/pageHeadingQuestionT
 import SearchBar from 'sentry/components/searchBar';
 import {t} from 'sentry/locale';
 import {trackAnalytics} from 'sentry/utils/analytics';
-import {browserHistory} from 'sentry/utils/browserHistory';
 import {decodeScalar, decodeSorts} from 'sentry/utils/queryString';
 import {MutableSearch} from 'sentry/utils/tokenizeSearch';
 import {useLocation} from 'sentry/utils/useLocation';
+import {useNavigate} from 'sentry/utils/useNavigate';
 import useOrganization from 'sentry/utils/useOrganization';
 import {useSynchronizeCharts} from 'sentry/views/insights/common/components/chart';
 import * as ModuleLayout from 'sentry/views/insights/common/components/moduleLayout';
 import {ModulePageProviders} from 'sentry/views/insights/common/components/modulePageProviders';
 import {ModulesOnboarding} from 'sentry/views/insights/common/components/modulesOnboarding';
+import {ModuleBodyUpsellHook} from 'sentry/views/insights/common/components/moduleUpsellHookWrapper';
 import {useSpanMetrics} from 'sentry/views/insights/common/queries/useDiscover';
 import {useSpanMetricsSeries} from 'sentry/views/insights/common/queries/useDiscoverSeries';
 import {useHasFirstSpan} from 'sentry/views/insights/common/queries/useHasFirstSpan';
@@ -40,9 +41,12 @@ import {
   MODULE_DOC_LINK,
   MODULE_TITLE,
 } from 'sentry/views/insights/database/settings';
+import {BackendHeader} from 'sentry/views/insights/pages/backend/backendPageHeader';
+import {useDomainViewFilters} from 'sentry/views/insights/pages/useFilters';
 import {ModuleName, SpanMetricsField} from 'sentry/views/insights/types';
 
 export function DatabaseLandingPage() {
+  const {isInDomainView} = useDomainViewFilters();
   const organization = useOrganization();
   const moduleName = ModuleName.DB;
   const location = useLocation();
@@ -67,13 +71,15 @@ export function DatabaseLandingPage() {
     sort = DEFAULT_SORT;
   }
 
+  const navigate = useNavigate();
+
   const handleSearch = (newQuery: string) => {
     trackAnalytics('insight.general.search', {
       organization,
       query: newQuery,
       source: ModuleName.DB,
     });
-    browserHistory.push({
+    navigate({
       ...location,
       query: {
         ...location.query,
@@ -107,6 +113,7 @@ export function DatabaseLandingPage() {
         'project.id',
         'span.group',
         'span.description',
+        'span.action',
         'spm()',
         'avg(span.self_time)',
         'sum(span.self_time)',
@@ -153,80 +160,104 @@ export function DatabaseLandingPage() {
     ) ||
     throughputData['spm()'].data?.some(({value}) => value > 0);
 
-  useSynchronizeCharts([!isThroughputDataLoading && !isDurationDataLoading]);
+  useSynchronizeCharts(2, !isThroughputDataLoading && !isDurationDataLoading);
 
   const crumbs = useModuleBreadcrumbs('db');
 
   return (
     <React.Fragment>
-      <Layout.Header>
-        <Layout.HeaderContent>
-          <Breadcrumbs crumbs={crumbs} />
+      {!isInDomainView && (
+        <Layout.Header>
+          <Layout.HeaderContent>
+            <Breadcrumbs crumbs={crumbs} />
 
-          <Layout.Title>
-            {MODULE_TITLE}
-            <PageHeadingQuestionTooltip
-              docsUrl={MODULE_DOC_LINK}
-              title={MODULE_DESCRIPTION}
-            />
-          </Layout.Title>
-        </Layout.HeaderContent>
-        <Layout.HeaderActions>
-          <ButtonBar gap={1}>
-            <FeedbackWidgetButton />
-          </ButtonBar>
-        </Layout.HeaderActions>
-      </Layout.Header>
-
-      <Layout.Body>
-        <Layout.Main fullWidth>
-          <ModuleLayout.Layout>
-            {hasModuleData && !onboardingProject && !isCriticalDataLoading && (
-              <NoDataMessage
-                Wrapper={AlertBanner}
-                isDataAvailable={isAnyCriticalDataAvailable}
+            <Layout.Title>
+              {MODULE_TITLE}
+              <PageHeadingQuestionTooltip
+                docsUrl={MODULE_DOC_LINK}
+                title={MODULE_DESCRIPTION}
               />
-            )}
+            </Layout.Title>
+          </Layout.HeaderContent>
+          <Layout.HeaderActions>
+            <ButtonBar gap={1}>
+              <FeedbackWidgetButton />
+            </ButtonBar>
+          </Layout.HeaderActions>
+        </Layout.Header>
+      )}
 
-            <ModuleLayout.Full>
-              <DatabasePageFilters
-                system={system}
-                databaseCommand={spanAction}
-                table={spanDomain}
+      {isInDomainView && (
+        <BackendHeader
+          headerTitle={
+            <React.Fragment>
+              {MODULE_TITLE}
+              <PageHeadingQuestionTooltip
+                docsUrl={MODULE_DOC_LINK}
+                title={MODULE_DESCRIPTION}
               />
-            </ModuleLayout.Full>
-            <ModulesOnboarding moduleName={ModuleName.DB}>
-              <ModuleLayout.Half>
-                <ThroughputChart
-                  series={throughputData['spm()']}
-                  isLoading={isThroughputDataLoading}
-                  error={throughputError}
+            </React.Fragment>
+          }
+          module={ModuleName.DB}
+        />
+      )}
+      <ModuleBodyUpsellHook moduleName={ModuleName.DB}>
+        <Layout.Body>
+          <Layout.Main fullWidth>
+            <ModuleLayout.Layout>
+              {hasModuleData && !onboardingProject && !isCriticalDataLoading && (
+                <NoDataMessage
+                  Wrapper={AlertBanner}
+                  isDataAvailable={isAnyCriticalDataAvailable}
                 />
-              </ModuleLayout.Half>
-
-              <ModuleLayout.Half>
-                <DurationChart
-                  series={[durationData[`${selectedAggregate}(span.self_time)`]]}
-                  isLoading={isDurationDataLoading}
-                  error={durationError}
-                />
-              </ModuleLayout.Half>
+              )}
 
               <ModuleLayout.Full>
-                <SearchBar
-                  query={spanDescription}
-                  placeholder={t('Search for more queries')}
-                  onSearch={handleSearch}
+                <DatabasePageFilters
+                  system={system}
+                  databaseCommand={spanAction}
+                  table={spanDomain}
                 />
               </ModuleLayout.Full>
+              <ModulesOnboarding moduleName={ModuleName.DB}>
+                <ModuleLayout.Half>
+                  <ThroughputChart
+                    series={throughputData['spm()']}
+                    isLoading={isThroughputDataLoading}
+                    error={throughputError}
+                    filters={chartFilters}
+                  />
+                </ModuleLayout.Half>
 
-              <ModuleLayout.Full>
-                <QueriesTable response={queryListResponse} sort={sort} />
-              </ModuleLayout.Full>
-            </ModulesOnboarding>
-          </ModuleLayout.Layout>
-        </Layout.Main>
-      </Layout.Body>
+                <ModuleLayout.Half>
+                  <DurationChart
+                    series={[durationData[`${selectedAggregate}(span.self_time)`]]}
+                    isLoading={isDurationDataLoading}
+                    error={durationError}
+                    filters={chartFilters}
+                  />
+                </ModuleLayout.Half>
+
+                <ModuleLayout.Full>
+                  <SearchBar
+                    query={spanDescription}
+                    placeholder={t('Search for more queries')}
+                    onSearch={handleSearch}
+                  />
+                </ModuleLayout.Full>
+
+                <ModuleLayout.Full>
+                  <QueriesTable
+                    response={queryListResponse}
+                    sort={sort}
+                    system={system}
+                  />
+                </ModuleLayout.Full>
+              </ModulesOnboarding>
+            </ModuleLayout.Layout>
+          </Layout.Main>
+        </Layout.Body>
+      </ModuleBodyUpsellHook>
     </React.Fragment>
   );
 }

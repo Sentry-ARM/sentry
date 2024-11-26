@@ -36,6 +36,7 @@ import * as ModuleLayout from 'sentry/views/insights/common/components/moduleLay
 import {ModulePageFilterBar} from 'sentry/views/insights/common/components/modulePageFilterBar';
 import {ModulePageProviders} from 'sentry/views/insights/common/components/modulePageProviders';
 import {ModulesOnboarding} from 'sentry/views/insights/common/components/modulesOnboarding';
+import {ModuleBodyUpsellHook} from 'sentry/views/insights/common/components/moduleUpsellHookWrapper';
 import {
   useMetrics,
   useSpanMetrics,
@@ -46,6 +47,8 @@ import {useOnboardingProject} from 'sentry/views/insights/common/queries/useOnbo
 import {useModuleBreadcrumbs} from 'sentry/views/insights/common/utils/useModuleBreadcrumbs';
 import {QueryParameterNames} from 'sentry/views/insights/common/views/queryParameters';
 import {DataTitles} from 'sentry/views/insights/common/views/spans/types';
+import {BackendHeader} from 'sentry/views/insights/pages/backend/backendPageHeader';
+import {useDomainViewFilters} from 'sentry/views/insights/pages/useFilters';
 import {ModuleName, SpanFunction, SpanMetricsField} from 'sentry/views/insights/types';
 
 const {CACHE_MISS_RATE} = SpanFunction;
@@ -65,6 +68,7 @@ const SDK_UPDATE_ALERT = (
 const CACHE_ERROR_MESSAGE = 'Column cache.hit was not found in metrics indexer';
 
 export function CacheLandingPage() {
+  const {isInDomainView} = useDomainViewFilters();
   const location = useLocation();
   const {setPageInfo, pageAlert} = usePageAlert();
 
@@ -181,64 +185,85 @@ export function CacheLandingPage() {
 
   return (
     <React.Fragment>
-      <Layout.Header>
-        <Layout.HeaderContent>
-          <Breadcrumbs crumbs={crumbs} />
+      {!isInDomainView && (
+        <Layout.Header>
+          <Layout.HeaderContent>
+            <Breadcrumbs crumbs={crumbs} />
 
-          <Layout.Title>
-            {MODULE_TITLE}
-            <PageHeadingQuestionTooltip
-              docsUrl={MODULE_DOC_LINK}
-              title={MODULE_DESCRIPTION}
-            />
-          </Layout.Title>
-        </Layout.HeaderContent>
-        <Layout.HeaderActions>
-          <ButtonBar gap={1}>
-            <FeedbackWidgetButton />
-          </ButtonBar>
-        </Layout.HeaderActions>
-      </Layout.Header>
+            <Layout.Title>
+              {MODULE_TITLE}
+              <PageHeadingQuestionTooltip
+                docsUrl={MODULE_DOC_LINK}
+                title={MODULE_DESCRIPTION}
+              />
+            </Layout.Title>
+          </Layout.HeaderContent>
+          <Layout.HeaderActions>
+            <ButtonBar gap={1}>
+              <FeedbackWidgetButton />
+            </ButtonBar>
+          </Layout.HeaderActions>
+        </Layout.Header>
+      )}
 
-      <Layout.Body>
-        <Layout.Main fullWidth>
-          <PageAlert />
-          <ModuleLayout.Layout>
-            <ModuleLayout.Full>
-              <ModulePageFilterBar moduleName={ModuleName.CACHE} />
-            </ModuleLayout.Full>
-            <ModulesOnboarding moduleName={ModuleName.CACHE}>
-              <ModuleLayout.Half>
-                <CacheHitMissChart
-                  series={{
-                    seriesName: DataTitles[`${CACHE_MISS_RATE}()`],
-                    data: cacheMissRateData[`${CACHE_MISS_RATE}()`]?.data,
-                  }}
-                  isLoading={isCacheMissRateLoading}
-                  error={cacheMissRateError}
-                />
-              </ModuleLayout.Half>
-              <ModuleLayout.Half>
-                <ThroughputChart
-                  series={throughputData['spm()']}
-                  isLoading={isThroughputDataLoading}
-                  error={throughputError}
-                />
-              </ModuleLayout.Half>
+      {isInDomainView && (
+        <BackendHeader
+          headerTitle={
+            <Fragment>
+              {MODULE_TITLE}
+              <PageHeadingQuestionTooltip
+                docsUrl={MODULE_DOC_LINK}
+                title={MODULE_DESCRIPTION}
+              />
+            </Fragment>
+          }
+          module={ModuleName.CACHE}
+        />
+      )}
+
+      <ModuleBodyUpsellHook moduleName={ModuleName.CACHE}>
+        <Layout.Body>
+          <Layout.Main fullWidth>
+            <PageAlert />
+            <ModuleLayout.Layout>
               <ModuleLayout.Full>
-                <TransactionsTable
-                  data={transactionsListWithDuration}
-                  isLoading={isTransactionsListFetching || isTransactionDurationFetching}
-                  sort={sort}
-                  error={transactionsListError || transactionDurationError}
-                  meta={meta}
-                  pageLinks={transactionsListPageLinks}
-                />
+                <ModulePageFilterBar moduleName={ModuleName.CACHE} />
               </ModuleLayout.Full>
-            </ModulesOnboarding>
-          </ModuleLayout.Layout>
-        </Layout.Main>
-      </Layout.Body>
+              <ModulesOnboarding moduleName={ModuleName.CACHE}>
+                <ModuleLayout.Half>
+                  <CacheHitMissChart
+                    series={{
+                      seriesName: DataTitles[`${CACHE_MISS_RATE}()`],
+                      data: cacheMissRateData[`${CACHE_MISS_RATE}()`]?.data,
+                    }}
+                    isLoading={isCacheMissRateLoading}
+                    error={cacheMissRateError}
+                  />
+                </ModuleLayout.Half>
+                <ModuleLayout.Half>
+                  <ThroughputChart
+                    series={throughputData['spm()']}
+                    isLoading={isThroughputDataLoading}
+                    error={throughputError}
+                  />
+                </ModuleLayout.Half>
+                <ModuleLayout.Full>
+                  <TransactionsTable
+                    data={transactionsListWithDuration}
+                    isLoading={
+                      isTransactionsListFetching || isTransactionDurationFetching
+                    }
+                    sort={sort}
+                    error={transactionsListError || transactionDurationError}
+                    meta={meta}
+                    pageLinks={transactionsListPageLinks}
+                  />
+                </ModuleLayout.Full>
+              </ModulesOnboarding>
+            </ModuleLayout.Layout>
+          </Layout.Main>
+        </Layout.Body>
+      </ModuleBodyUpsellHook>
       <CacheSamplePanel />
     </React.Fragment>
   );
@@ -281,7 +306,7 @@ const combineMeta = (
 
 // TODO - this should come from the backend
 const addCustomMeta = (meta?: EventsMetaType) => {
-  if (meta) {
+  if (meta?.fields) {
     meta.fields[`avg(${CACHE_ITEM_SIZE})`] = 'size';
     meta.units[`avg(${CACHE_ITEM_SIZE})`] = 'byte';
   }

@@ -271,7 +271,7 @@ const appConfig: webpack.Configuration = {
       },
       {
         test: /\.pegjs$/,
-        use: ['pegjs-loader?cache=false&optimize=speed'],
+        use: [{loader: path.resolve(__dirname, './build-utils/peggy-loader.ts')}],
       },
       {
         test: /\.css/,
@@ -827,7 +827,10 @@ appConfig.plugins?.push(
       enabled: true,
     },
     bundleSizeOptimizations: {
-      excludeDebugStatements: IS_PRODUCTION,
+      // This is enabled so that our SDKs send exceptions to Sentry
+      excludeDebugStatements: false,
+      excludeReplayIframe: true,
+      excludeReplayShadowDom: true,
     },
   })
 );

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 import re
 import warnings
 from collections import defaultdict, namedtuple
@@ -167,6 +166,14 @@ class GroupStatus:
     # TODO(dcramer): remove in 9.0
     MUTED = IGNORED
 
+
+STATUS_WITHOUT_SUBSTATUS = {
+    GroupStatus.RESOLVED,
+    GroupStatus.PENDING_DELETION,
+    GroupStatus.DELETION_IN_PROGRESS,
+    GroupStatus.PENDING_MERGE,
+    GroupStatus.REPROCESSING,
+}
 
 # Statuses that can be queried/searched for
 STATUS_QUERY_CHOICES: Mapping[str, int] = {
@@ -389,7 +396,7 @@ class GroupManager(BaseManager["Group"]):
         self,
         integration: RpcIntegration,
         organizations: Iterable[Organization],
-        external_issue_key: str,
+        external_issue_key: str | None,
     ) -> QuerySet[Group]:
         from sentry.integrations.models.external_issue import ExternalIssue
         from sentry.integrations.services.integration import integration_service
@@ -562,7 +569,6 @@ class Group(Model):
     active_at = models.DateTimeField(null=True, db_index=True)
     time_spent_total = BoundedIntegerField(default=0)
     time_spent_count = BoundedIntegerField(default=0)
-    score = BoundedIntegerField(default=0)
     # deprecated, do not use. GroupShare has superseded
     is_public = models.BooleanField(default=False, null=True)
     data: models.Field[dict[str, Any] | None, dict[str, Any]] = GzippedDictField(
@@ -616,9 +622,6 @@ class Group(Model):
             self.message = truncatechars(self.message.splitlines()[0], 255)
         if self.times_seen is None:
             self.times_seen = 1
-        self.score = type(self).calculate_score(
-            times_seen=self.times_seen, last_seen=self.last_seen
-        )
         super().save(*args, **kwargs)
 
     def get_absolute_url(
@@ -761,9 +764,6 @@ class Group(Model):
             # Otherwise it has not been shared yet.
             return None
 
-    def get_score(self):
-        return type(self).calculate_score(self.times_seen, self.last_seen)
-
     def get_latest_event(self) -> GroupEvent | None:
         if not hasattr(self, "_latest_event"):
             self._latest_event = self.get_latest_event_for_environments()
@@ -904,19 +904,19 @@ class Group(Model):
     def get_email_subject(self):
         return f"{self.qualified_short_id} - {self.title}"
 
-    def count_users_seen(self, referrer=Referrer.TAGSTORE_GET_GROUPS_USER_COUNTS.value):
+    def count_users_seen(
+        self,
+        referrer=Referrer.TAGSTORE_GET_GROUPS_USER_COUNTS.value,
+        environment_ids: list[int] | None = None,
+    ):
         return tagstore.backend.get_groups_user_counts(
             [self.project_id],
             [self.id],
-            environment_ids=None,
+            environment_ids=environment_ids,
             start=self.first_seen,
             tenant_ids={"organization_id": self.project.organization_id},
             referrer=referrer,
         )[self.id]
-
-    @classmethod
-    def calculate_score(cls, times_seen, last_seen):
-        return math.log(float(times_seen or 1)) * 600 + float(last_seen.strftime("%s"))
 
     def get_assignee(self) -> Team | RpcUser | None:
         from sentry.models.groupassignee import GroupAssignee

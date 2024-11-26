@@ -1,4 +1,4 @@
-import {Fragment, useCallback, useState} from 'react';
+import {Fragment, useCallback, useMemo} from 'react';
 import styled from '@emotion/styled';
 
 import {openModal} from 'sentry/actionCreators/modal';
@@ -7,9 +7,13 @@ import {TabList, Tabs} from 'sentry/components/tabs';
 import {IconTable} from 'sentry/icons/iconTable';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
+import {decodeScalar} from 'sentry/utils/queryString';
+import {useLocation} from 'sentry/utils/useLocation';
+import {useNavigate} from 'sentry/utils/useNavigate';
 import {useResultMode} from 'sentry/views/explore/hooks/useResultsMode';
 import {useSampleFields} from 'sentry/views/explore/hooks/useSampleFields';
-import {useSpanFieldSupportedTags} from 'sentry/views/performance/utils/useSpanFieldSupportedTags';
+
+import {useSpanTags} from '../contexts/spanTagsContext';
 
 import {TracesTable} from './tracesTable/index';
 import {AggregatesTable} from './aggregatesTable';
@@ -19,6 +23,35 @@ import {SpansTable} from './spansTable';
 enum Tab {
   SPAN = 'span',
   TRACE = 'trace',
+}
+
+function useTab(): [Tab, (tab: Tab) => void] {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const tab = useMemo(() => {
+    const rawTab = decodeScalar(location.query.table);
+    if (rawTab === 'trace') {
+      return Tab.TRACE;
+    }
+    return Tab.SPAN;
+  }, [location.query.table]);
+
+  const setTab = useCallback(
+    (newTab: Tab) => {
+      navigate({
+        ...location,
+        query: {
+          ...location.query,
+          table: newTab,
+          cursor: undefined,
+        },
+      });
+    },
+    [location, navigate]
+  );
+
+  return [tab, setTab];
 }
 
 interface ExploreTablesProps {}
@@ -39,11 +72,11 @@ function ExploreAggregatesTable() {
 }
 
 function ExploreSamplesTable() {
-  const [tab, setTab] = useState(Tab.SPAN);
+  const [tab, setTab] = useTab();
 
   const [fields, setFields] = useSampleFields();
-  // TODO: This should be loaded from context to avoid loading tags twice.
-  const tags = useSpanFieldSupportedTags();
+  const numberTags = useSpanTags('number');
+  const stringTags = useSpanTags('string');
 
   const openColumnEditor = useCallback(() => {
     openModal(
@@ -52,12 +85,13 @@ function ExploreSamplesTable() {
           {...modalProps}
           columns={fields}
           onColumnsChange={setFields}
-          tags={tags}
+          stringTags={stringTags}
+          numberTags={numberTags}
         />
       ),
       {closeEvents: 'escape-key'}
     );
-  }, [fields, setFields, tags]);
+  }, [fields, setFields, stringTags, numberTags]);
 
   return (
     <Fragment>
@@ -69,12 +103,11 @@ function ExploreSamplesTable() {
           </TabList>
         </Tabs>
         <Button
-          size="sm"
           disabled={tab !== Tab.SPAN}
           onClick={openColumnEditor}
           icon={<IconTable />}
         >
-          {t('Columns')}
+          {t('Edit Table')}
         </Button>
       </SamplesTableHeader>
       {tab === Tab.SPAN && <SpansTable />}
@@ -87,5 +120,5 @@ const SamplesTableHeader = styled('div')`
   display: flex;
   flex-direction: row;
   justify-content: space-between;
-  margin-bottom: ${space(1)};
+  margin-bottom: ${space(2)};
 `;

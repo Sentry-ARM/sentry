@@ -1,4 +1,4 @@
-import {useCallback, useMemo} from 'react';
+import {useCallback} from 'react';
 import styled from '@emotion/styled';
 import type {Location} from 'history';
 
@@ -11,36 +11,48 @@ import {EnvironmentPageFilter} from 'sentry/components/organizations/environment
 import PageFilterBar from 'sentry/components/organizations/pageFilterBar';
 import PageFiltersContainer from 'sentry/components/organizations/pageFilters/container';
 import {ProjectPageFilter} from 'sentry/components/organizations/projectPageFilter';
-import {SpanSearchQueryBuilder} from 'sentry/components/performance/spanSearchQueryBuilder';
+import {
+  EAPSpanSearchQueryBuilder,
+  SpanSearchQueryBuilder,
+} from 'sentry/components/performance/spanSearchQueryBuilder';
 import SentryDocumentTitle from 'sentry/components/sentryDocumentTitle';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
+import {DiscoverDatasets} from 'sentry/utils/discover/types';
 import {ALLOWED_EXPLORE_VISUALIZE_AGGREGATES} from 'sentry/utils/fields';
 import {useLocation} from 'sentry/utils/useLocation';
 import {useNavigate} from 'sentry/utils/useNavigate';
 import useOrganization from 'sentry/utils/useOrganization';
 import usePageFilters from 'sentry/utils/usePageFilters';
+import {ExploreCharts} from 'sentry/views/explore/charts';
+import {
+  SpanTagsProvider,
+  useSpanTags,
+} from 'sentry/views/explore/contexts/spanTagsContext';
+import {useDataset} from 'sentry/views/explore/hooks/useDataset';
+import {useUserQuery} from 'sentry/views/explore/hooks/useUserQuery';
+import {ExploreTables} from 'sentry/views/explore/tables';
+import {ExploreToolbar} from 'sentry/views/explore/toolbar';
 
 import {useResultMode} from './hooks/useResultsMode';
-import {useUserQuery} from './hooks/useUserQuery';
-import {ExploreCharts} from './charts';
-import {ExploreTables} from './tables';
-import {ExploreToolbar} from './toolbar';
 
 interface ExploreContentProps {
   location: Location;
 }
 
-export function ExploreContent({}: ExploreContentProps) {
+function ExploreContentImpl({}: ExploreContentProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const organization = useOrganization();
   const {selection} = usePageFilters();
-  const [resultsMode] = useResultMode();
+  const [dataset] = useDataset();
 
-  const supportedAggregates = useMemo(() => {
-    return resultsMode === 'aggregate' ? ALLOWED_EXPLORE_VISUALIZE_AGGREGATES : [];
-  }, [resultsMode]);
+  const [resultMode] = useResultMode();
+  const supportedAggregates =
+    resultMode === 'aggregate' ? ALLOWED_EXPLORE_VISUALIZE_AGGREGATES : [];
+
+  const numberTags = useSpanTags('number');
+  const stringTags = useSpanTags('string');
 
   const [userQuery, setUserQuery] = useUserQuery();
 
@@ -64,39 +76,48 @@ export function ExploreContent({}: ExploreContentProps) {
         <Layout.Page>
           <Layout.Header>
             <Layout.HeaderContent>
-              <Title>{t('Explore')}</Title>
+              <Layout.Title>{t('Explore')}</Layout.Title>
             </Layout.HeaderContent>
             <Layout.HeaderActions>
               <ButtonBar gap={1}>
-                <Button onClick={switchToOldTraceExplorer}>
-                  {t('Switch to old Trace Explore')}
+                <Button onClick={switchToOldTraceExplorer} size="sm">
+                  {t('Switch to Old Trace Explore')}
                 </Button>
                 <FeedbackWidgetButton />
               </ButtonBar>
             </Layout.HeaderActions>
           </Layout.Header>
           <Body>
-            <FilterActions>
-              <PageFilterBar condensed>
+            <TopSection>
+              <StyledPageFilterBar condensed>
                 <ProjectPageFilter />
                 <EnvironmentPageFilter />
                 <DatePageFilter />
-              </PageFilterBar>
-              <SpanSearchQueryBuilder
-                supportedAggregates={supportedAggregates}
-                projects={selection.projects}
-                initialQuery={userQuery}
-                onSearch={setUserQuery}
-                searchSource="explore"
-              />
-            </FilterActions>
-            <Side>
-              <ExploreToolbar extras={toolbarExtras} />
-            </Side>
-            <Main fullWidth>
+              </StyledPageFilterBar>
+              {dataset === DiscoverDatasets.SPANS_INDEXED ? (
+                <SpanSearchQueryBuilder
+                  projects={selection.projects}
+                  initialQuery={userQuery}
+                  onSearch={setUserQuery}
+                  searchSource="explore"
+                />
+              ) : (
+                <EAPSpanSearchQueryBuilder
+                  projects={selection.projects}
+                  initialQuery={userQuery}
+                  onSearch={setUserQuery}
+                  searchSource="explore"
+                  supportedAggregates={supportedAggregates}
+                  numberTags={numberTags}
+                  stringTags={stringTags}
+                />
+              )}
+            </TopSection>
+            <ExploreToolbar extras={toolbarExtras} />
+            <MainSection fullWidth>
               <ExploreCharts query={userQuery} />
               <ExploreTables />
-            </Main>
+            </MainSection>
           </Body>
         </Layout.Page>
       </PageFiltersContainer>
@@ -104,34 +125,48 @@ export function ExploreContent({}: ExploreContentProps) {
   );
 }
 
-const Title = styled(Layout.Title)`
-  margin-bottom: ${space(2)};
-`;
+export function ExploreContent(props: ExploreContentProps) {
+  const [dataset] = useDataset();
 
-const FilterActions = styled('div')`
-  grid-column: 1 / -1;
-  display: grid;
-  gap: ${space(2)};
-  grid-template-columns: auto;
-
-  @media (min-width: ${p => p.theme.breakpoints.large}) {
-    grid-template-columns: auto 1fr;
-  }
-`;
+  return (
+    <SpanTagsProvider dataset={dataset}>
+      <ExploreContentImpl {...props} />
+    </SpanTagsProvider>
+  );
+}
 
 const Body = styled(Layout.Body)`
-  @media (min-width: ${p => p.theme.breakpoints.large}) {
-    display: grid;
-    grid-template-columns: 275px minmax(100px, auto);
-    align-content: start;
-    gap: ${p => (!p.noRowGap ? `${space(3)}` : `0 ${space(3)}`)};
+  gap: ${space(2)};
+
+  @media (min-width: ${p => p.theme.breakpoints.medium}) {
+    grid-template-columns: 300px minmax(100px, auto);
+  }
+
+  @media (min-width: ${p => p.theme.breakpoints.xxlarge}) {
+    grid-template-columns: 350px minmax(100px, auto);
   }
 `;
 
-const Main = styled(Layout.Main)`
+const TopSection = styled('div')`
+  display: grid;
+  gap: ${space(2)};
+  grid-column: 1/3;
+  margin-bottom: ${space(2)};
+
+  @media (min-width: ${p => p.theme.breakpoints.large}) {
+    grid-template-columns: minmax(300px, auto) 1fr;
+    margin-bottom: 0;
+  }
+
+  @media (min-width: ${p => p.theme.breakpoints.xxlarge}) {
+    grid-template-columns: minmax(350px, auto) 1fr;
+  }
+`;
+
+const MainSection = styled(Layout.Main)`
   grid-column: 2/3;
 `;
 
-const Side = styled(Layout.Side)`
-  grid-column: 1/2;
+const StyledPageFilterBar = styled(PageFilterBar)`
+  width: auto;
 `;

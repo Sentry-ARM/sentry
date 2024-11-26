@@ -175,6 +175,7 @@ class TimeseriesQueryBuilder(UnresolvedQuery):
         config = config if config is not None else QueryBuilderConfig()
         config.auto_fields = False
         config.equation_config = {"auto_add": True, "aggregates_only": True}
+        self.interval = interval
         super().__init__(
             dataset,
             params,
@@ -185,7 +186,6 @@ class TimeseriesQueryBuilder(UnresolvedQuery):
             config=config,
         )
 
-        self.interval = interval
         self.granularity = Granularity(interval)
 
         self.limit = None if limit is None else Limit(limit)
@@ -221,10 +221,10 @@ class TimeseriesQueryBuilder(UnresolvedQuery):
 
     def get_snql_query(self) -> Request:
         return Request(
-            dataset=self._get_dataset_name(),
+            dataset=self.dataset.value,
             app_id="default",
             query=Query(
-                match=Entity(self.dataset.value),
+                match=Entity(self._get_entity_name()),
                 select=self.select,
                 where=self.where,
                 having=self.having,

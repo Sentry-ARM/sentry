@@ -17,7 +17,8 @@ jest.mock('sentry/views/insights/common/queries/useOnboardingProject');
 describe('DatabaseLandingPage', function () {
   const organization = OrganizationFixture();
 
-  let spanListRequestMock, spanChartsRequestMock;
+  let spanListRequestMock: jest.Mock;
+  let spanChartsRequestMock: jest.Mock;
 
   jest.mocked(useProjects).mockReturnValue({
     projects: [ProjectFixture({hasInsightsDb: true})],
@@ -194,6 +195,7 @@ describe('DatabaseLandingPage', function () {
             'project.id',
             'span.group',
             'span.description',
+            'span.action',
             'spm()',
             'avg(span.self_time)',
             'sum(span.self_time)',
@@ -310,6 +312,7 @@ describe('DatabaseLandingPage', function () {
             'project.id',
             'span.group',
             'span.description',
+            'span.action',
             'spm()',
             'avg(span.self_time)',
             'sum(span.self_time)',

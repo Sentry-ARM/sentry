@@ -120,6 +120,7 @@ def timeseries_query(
     on_demand_metrics_enabled=False,
     on_demand_metrics_type: MetricSpecType | None = None,
     query_source: QuerySource | None = None,
+    fallback_to_transactions: bool = False,
 ):
     """
     High-level API for doing arbitrary user timeseries queries against events.
@@ -145,7 +146,7 @@ def timeseries_query(
     allow_metric_aggregates (bool) Ignored here, only used in metric enhanced performance
     """
 
-    with sentry_sdk.start_span(op="issueplatform", description="timeseries.filter_transform"):
+    with sentry_sdk.start_span(op="issueplatform", name="timeseries.filter_transform"):
         equations, columns = categorize_columns(selected_columns)
         base_builder = IssuePlatformTimeseriesQueryBuilder(
             Dataset.IssuePlatform,
@@ -182,7 +183,7 @@ def timeseries_query(
             [query.get_snql_query() for query in query_list], referrer, query_source=query_source
         )
 
-    with sentry_sdk.start_span(op="issueplatform", description="timeseries.transform_results"):
+    with sentry_sdk.start_span(op="issueplatform", name="timeseries.transform_results"):
         results = []
         for snql_query, result in zip(query_list, query_results):
             results.append(

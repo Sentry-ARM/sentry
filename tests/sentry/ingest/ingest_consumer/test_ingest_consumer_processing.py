@@ -6,7 +6,7 @@ import uuid
 import zipfile
 from io import BytesIO
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import orjson
 import pytest
@@ -19,15 +19,18 @@ from django.conf import settings
 from sentry import eventstore
 from sentry.event_manager import EventManager
 from sentry.ingest.consumer.processors import (
+    collect_span_metrics,
     process_attachment_chunk,
     process_event,
     process_individual_attachment,
     process_userreport,
 )
+from sentry.ingest.types import ConsumerType
 from sentry.models.debugfile import create_files_from_dif_zip
 from sentry.models.eventattachment import EventAttachment
 from sentry.models.userreport import UserReport
 from sentry.options import set
+from sentry.testutils.helpers.features import Feature
 from sentry.testutils.pytest.fixtures import django_db_all
 from sentry.testutils.skips import requires_snuba, requires_symbolicator
 from sentry.usage_accountant import accountant
@@ -86,6 +89,7 @@ def test_deduplication_works(default_project, task_runner, preprocess_event):
 
     for _ in range(2):
         process_event(
+            ConsumerType.Events,
             {
                 "payload": orjson.dumps(payload).decode(),
                 "start_time": start_time,
@@ -136,6 +140,7 @@ def test_transactions_spawn_save_event_transaction(
     event_id = payload["event_id"]
     start_time = time.time() - 3600
     process_event(
+        ConsumerType.Events,
         {
             "payload": orjson.dumps(payload).decode(),
             "start_time": start_time,
@@ -188,6 +193,7 @@ def test_accountant_transaction(default_project):
     payload = get_normalized_event(event, default_project)
     serialized = orjson.dumps(payload).decode()
     process_event(
+        ConsumerType.Events,
         {
             "payload": serialized,
             "start_time": time.time() - 3600,
@@ -238,6 +244,7 @@ def test_feedbacks_spawn_save_event_feedback(
     event_id = payload["event_id"]
     start_time = time.time() - 3600
     process_event(
+        ConsumerType.Events,
         {
             "payload": orjson.dumps(payload).decode(),
             "start_time": start_time,
@@ -290,6 +297,7 @@ def test_with_attachments(default_project, task_runner, missing_chunks, monkeypa
 
     with task_runner():
         process_event(
+            ConsumerType.Events,
             {
                 "payload": orjson.dumps(payload).decode(),
                 "start_time": start_time,
@@ -374,6 +382,7 @@ def test_deobfuscate_view_hierarchy(default_project, task_runner, set_sentry_opt
 
         with task_runner():
             process_event(
+                ConsumerType.Events,
                 {
                     "payload": orjson.dumps(payload).decode(),
                     "start_time": start_time,
@@ -595,3 +604,19 @@ def test_individual_attachments_missing_chunks(default_project, factories, monke
     attachments = list(EventAttachment.objects.filter(project_id=project_id, event_id=event_id))
 
     assert not attachments
+
+
+@django_db_all
+def test_collect_span_metrics(default_project):
+    with Feature({"organizations:dynamic-sampling": True, "organization:am3-tier": True}):
+        with patch("sentry.ingest.consumer.processors.metrics") as mock_metrics:
+            assert mock_metrics.incr.call_count == 0
+            collect_span_metrics(default_project, {"spans": [1, 2, 3]})
+            assert mock_metrics.incr.call_count == 0
+
+    with Feature({"organizations:dynamic-sampling": False, "organization:am3-tier": False}):
+        with patch("sentry.ingest.consumer.processors.metrics") as mock_metrics:
+
+            assert mock_metrics.incr.call_count == 0
+            collect_span_metrics(default_project, {"spans": [1, 2, 3]})
+            assert mock_metrics.incr.call_count == 1

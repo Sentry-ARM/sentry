@@ -22,6 +22,7 @@ module.exports = {
     jest: true,
   },
   rules: {
+    'react-hooks/rules-of-hooks': 'error',
     'react-hooks/exhaustive-deps': [
       'error',
       {additionalHooks: '(useEffectAfterFirstRender|useMemoWithPrevious)'},
@@ -88,6 +89,14 @@ module.exports = {
             importNames: ['withSentryRouter'],
             message:
               "Use 'useLocation', 'useParams', 'useNavigate', 'useRoutes' from sentry/utils instead.",
+          },
+          {
+            name: 'qs',
+            message: 'Please use query-string instead of qs',
+          },
+          {
+            name: 'moment',
+            message: 'Please import moment-timezone instead of moment',
           },
         ],
       },

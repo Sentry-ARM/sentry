@@ -29,6 +29,7 @@ export enum WidgetType {
   METRICS = 'custom-metrics',
   ERRORS = 'error-events',
   TRANSACTIONS = 'transaction-like',
+  SPANS = 'spans',
 }
 
 // These only pertain to on-demand warnings at this point in time
@@ -80,6 +81,8 @@ export type WidgetQuery = {
   isHidden?: boolean | null;
   // Contains the on-demand entries for the widget query.
   onDemand?: WidgetQueryOnDemand[];
+  // Aggregate selected for the Big Number widget builder
+  selectedAggregate?: number;
 };
 
 export type Widget = {
@@ -106,6 +109,11 @@ export type WidgetLayout = Pick<Layout, 'h' | 'w' | 'x' | 'y'> & {
 export type WidgetPreview = {
   displayType: DisplayType;
   layout: WidgetLayout | null;
+};
+
+export type DashboardPermissions = {
+  isEditableByEveryone: boolean;
+  teamsWithEditAccess?: number[];
 };
 
 /**
@@ -142,6 +150,7 @@ export type DashboardDetails = {
   end?: string;
   environment?: string[];
   period?: string;
+  permissions?: DashboardPermissions;
   start?: string;
   utc?: boolean;
 };

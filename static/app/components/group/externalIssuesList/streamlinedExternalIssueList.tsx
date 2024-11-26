@@ -2,8 +2,10 @@ import styled from '@emotion/styled';
 
 import AlertLink from 'sentry/components/alertLink';
 import {Button, type ButtonProps, LinkButton} from 'sentry/components/button';
+import DropdownButton from 'sentry/components/dropdownButton';
 import {DropdownMenu} from 'sentry/components/dropdownMenu';
 import ErrorBoundary from 'sentry/components/errorBoundary';
+import type {ExternalIssueAction} from 'sentry/components/group/externalIssuesList/hooks/types';
 import Placeholder from 'sentry/components/placeholder';
 import * as SidebarSection from 'sentry/components/sidebarSection';
 import {Tooltip} from 'sentry/components/tooltip';
@@ -13,8 +15,45 @@ import type {Event} from 'sentry/types/event';
 import type {Group} from 'sentry/types/group';
 import type {Project} from 'sentry/types/project';
 import useOrganization from 'sentry/utils/useOrganization';
+import {Divider} from 'sentry/views/issueDetails/divider';
+import {SidebarSectionTitle} from 'sentry/views/issueDetails/streamline/sidebar';
 
 import useStreamLinedExternalIssueData from './hooks/useGroupExternalIssues';
+
+function getActionLabelAndTextValue({
+  action,
+  integrationDisplayName,
+}: {
+  action: ExternalIssueAction;
+  integrationDisplayName: string;
+}): {label: string | JSX.Element; textValue: string} {
+  // If there's no subtext or subtext matches name, just show name
+  if (!action.nameSubText || action.nameSubText === action.name) {
+    return {
+      label: action.name,
+      textValue: action.name,
+    };
+  }
+
+  // If action name matches integration name, just show subtext
+  if (action.name === integrationDisplayName) {
+    return {
+      label: action.nameSubText,
+      textValue: `${action.name} ${action.nameSubText}`,
+    };
+  }
+
+  // Otherwise show both name and subtext
+  return {
+    label: (
+      <div>
+        <strong>{action.name}</strong>
+        <div>{action.nameSubText}</div>
+      </div>
+    ),
+    textValue: `${action.name} ${action.nameSubText}`,
+  };
+}
 
 interface StreamlinedExternalIssueListProps {
   event: Event;
@@ -36,18 +75,18 @@ export function StreamlinedExternalIssueList({
 
   if (isLoading) {
     return (
-      <SidebarSection.Wrap data-test-id="linked-issues">
-        <StyledSectionTitle>{t('Issue Tracking')}</StyledSectionTitle>
+      <div data-test-id="linked-issues">
+        <SidebarSectionTitle>{t('Issue Tracking')}</SidebarSectionTitle>
         <SidebarSection.Content>
-          <Placeholder height="25px" />
+          <Placeholder height="25px" testId="issue-tracking-loading" />
         </SidebarSection.Content>
-      </SidebarSection.Wrap>
+      </div>
     );
   }
 
   return (
-    <SidebarSection.Wrap data-test-id="linked-issues">
-      <StyledSectionTitle>{t('Issue Tracking')}</StyledSectionTitle>
+    <div data-test-id="linked-issues">
+      <SidebarSectionTitle>{t('Issue Tracking')}</SidebarSectionTitle>
       <SidebarSection.Content>
         {integrations.length || linkedIssues.length ? (
           <IssueActionWrapper>
@@ -82,6 +121,7 @@ export function StreamlinedExternalIssueList({
                 </Tooltip>
               </ErrorBoundary>
             ))}
+            {integrations.length > 0 && linkedIssues.length > 0 ? <Divider /> : null}
             {integrations.map(integration => {
               const sharedButtonProps: ButtonProps = {
                 size: 'zero',
@@ -106,11 +146,18 @@ export function StreamlinedExternalIssueList({
                 <ErrorBoundary key={integration.key} mini>
                   <DropdownMenu
                     trigger={triggerProps => (
-                      <IssueActionButton {...sharedButtonProps} {...triggerProps} />
+                      <IssueActionDropdownMenu
+                        {...sharedButtonProps}
+                        {...triggerProps}
+                        showChevron={false}
+                      />
                     )}
                     items={integration.actions.map(action => ({
-                      key: action.name,
-                      label: action.name,
+                      key: action.id,
+                      ...getActionLabelAndTextValue({
+                        action,
+                        integrationDisplayName: integration.displayName,
+                      }),
                       onAction: action.onClick,
                       disabled: integration.disabled,
                     }))}
@@ -130,7 +177,7 @@ export function StreamlinedExternalIssueList({
           </AlertLink>
         )}
       </SidebarSection.Content>
-    </SidebarSection.Wrap>
+    </div>
   );
 }
 
@@ -138,18 +185,14 @@ const IssueActionWrapper = styled('div')`
   display: flex;
   flex-wrap: wrap;
   gap: ${space(1)};
-`;
-
-const StyledSectionTitle = styled(SidebarSection.Title)`
-  margin-top: ${space(0.25)};
+  line-height: 1.2;
 `;
 
 const LinkedIssue = styled(LinkButton)`
   display: flex;
   align-items: center;
   padding: ${space(0.5)} ${space(0.75)};
-  line-height: 1.05;
-  border: 1px dashed ${p => p.theme.border};
+  border: 1px solid ${p => p.theme.border};
   border-radius: ${p => p.theme.borderRadius};
   font-weight: normal;
 `;
@@ -158,10 +201,22 @@ const IssueActionButton = styled(Button)`
   display: flex;
   align-items: center;
   padding: ${space(0.5)} ${space(0.75)};
-  line-height: 1.05;
   border: 1px dashed ${p => p.theme.border};
   border-radius: ${p => p.theme.borderRadius};
   font-weight: normal;
+`;
+
+const IssueActionDropdownMenu = styled(DropdownButton)`
+  display: flex;
+  align-items: center;
+  padding: ${space(0.5)} ${space(0.75)};
+  border: 1px dashed ${p => p.theme.border};
+  border-radius: ${p => p.theme.borderRadius};
+  font-weight: normal;
+
+  &[aria-expanded='true'] {
+    border: 1px solid ${p => p.theme.border};
+  }
 `;
 
 const IssueActionName = styled('div')`

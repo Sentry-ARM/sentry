@@ -1,6 +1,7 @@
 import {
   type Dispatch,
   Fragment,
+  type Key,
   type SetStateAction,
   useContext,
   useEffect,
@@ -8,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import {css} from '@emotion/react';
 import styled from '@emotion/styled';
 import type {AriaTabListOptions} from '@react-aria/tabs';
 import {useTabList} from '@react-aria/tabs';
@@ -27,12 +29,16 @@ import {IconAdd, IconEllipsis} from 'sentry/icons';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
 import {defined} from 'sentry/utils';
-import {browserHistory} from 'sentry/utils/browserHistory';
+import {trackAnalytics} from 'sentry/utils/analytics';
 import {useDimensions} from 'sentry/utils/useDimensions';
 import {useDimensionsMultiple} from 'sentry/utils/useDimensionsMultiple';
+import {useNavigate} from 'sentry/utils/useNavigate';
+import useOrganization from 'sentry/utils/useOrganization';
 
 import type {DraggableTabListItemProps} from './item';
 import {Item} from './item';
+
+export const TEMPORARY_TAB_KEY = 'temporary-tab';
 
 interface BaseDraggableTabListProps extends DraggableTabListProps {
   items: DraggableTabListItemProps[];
@@ -40,7 +46,7 @@ interface BaseDraggableTabListProps extends DraggableTabListProps {
 
 function useOverflowingTabs({state}: {state: TabListState<DraggableTabListItemProps>}) {
   const persistentTabs = [...state.collection].filter(
-    item => item.key !== 'temporary-tab'
+    item => item.key !== TEMPORARY_TAB_KEY
   );
   const outerRef = useRef<HTMLDivElement>(null);
   const addViewTempTabRef = useRef<HTMLDivElement>(null);
@@ -120,25 +126,35 @@ function Tabs({
   state,
   className,
   onReorder,
+  onReorderComplete,
   tabVariant,
   setTabRefs,
   tabs,
   overflowingTabs,
+  hoveringKey,
+  setHoveringKey,
+  tempTabActive,
+  editingTabKey,
 }: {
   ariaProps: AriaTabListOptions<DraggableTabListItemProps>;
+  hoveringKey: Key | 'addView' | null;
   onReorder: (newOrder: Node<DraggableTabListItemProps>[]) => void;
   orientation: 'horizontal' | 'vertical';
   overflowingTabs: Node<DraggableTabListItemProps>[];
+  setHoveringKey: (key: Key | 'addView' | null) => void;
   setTabRefs: Dispatch<SetStateAction<Array<HTMLDivElement | null>>>;
   state: TabListState<DraggableTabListItemProps>;
   tabs: Node<DraggableTabListItemProps>[];
+  tempTabActive: boolean;
   className?: string;
   disabled?: boolean;
+  editingTabKey?: string;
   onChange?: (key: string | number) => void;
+  onReorderComplete?: () => void;
   tabVariant?: BaseTabProps['variant'];
   value?: string | number;
 }) {
-  const tabListRef = useRef<HTMLUListElement>(null);
+  const tabListRef = useRef<HTMLDivElement>(null);
   const {tabListProps} = useTabList({orientation, ...ariaProps}, state, tabListRef);
 
   const values = useMemo(() => [...state.collection], [state.collection]);
@@ -149,9 +165,47 @@ function Tabs({
   // which we do not want (we hide tabs once they overflow
   const dragConstraints = isDragging ? tabListRef : undefined;
 
+  const isTabDividerVisible = tabKey => {
+    // If the tab divider is succeeding or preceding the selected tab key
+    if (
+      state.selectedKey === tabKey ||
+      (state.selectedKey !== TEMPORARY_TAB_KEY &&
+        state.collection.getKeyAfter(tabKey) !== TEMPORARY_TAB_KEY &&
+        state.collection.getKeyAfter(tabKey) === state.selectedKey)
+    ) {
+      return false;
+    }
+
+    // If the tab divider is succeeding or preceding the hovering tab key
+    if (
+      hoveringKey !== TEMPORARY_TAB_KEY &&
+      (hoveringKey === tabKey || hoveringKey === state.collection.getKeyAfter(tabKey))
+    ) {
+      return false;
+    }
+
+    if (
+      tempTabActive &&
+      state.collection.getKeyAfter(tabKey) === TEMPORARY_TAB_KEY &&
+      hoveringKey === 'addView'
+    ) {
+      return false;
+    }
+
+    if (
+      tabKey !== TEMPORARY_TAB_KEY &&
+      !state.collection.getKeyAfter(tabKey) &&
+      hoveringKey === 'addView'
+    ) {
+      return false;
+    }
+
+    return true;
+  };
+
   return (
     <TabListWrap {...tabListProps} className={className} ref={tabListRef}>
-      <ReorderGroup axis="x" values={values} onReorder={onReorder} as="div">
+      <ReorderGroup axis="x" values={values} onReorder={onReorder} initial={false}>
         {tabs.map((item, i) => (
           <Fragment key={item.key}>
             <TabItemWrap
@@ -168,33 +222,37 @@ function Tabs({
                 })
               }
               value={item}
-              as="div"
               data-key={item.key}
               dragConstraints={dragConstraints} // dragConstraints are the bounds that the tab can be dragged within
               dragElastic={0} // Prevents the tab from being dragged outside of the dragConstraints (w/o this you can drag it outside but it'll spring back)
               dragTransition={{bounceStiffness: 400, bounceDamping: 40}} // Recovers spring behavior thats lost when using dragElastic=0
-              transition={{delay: -0.1}} // Skips the first few frames of the animation that make the tab appear to shrink before growing
+              transition={{duration: 0.1}}
               layout
+              drag={item.key !== editingTabKey} // Disable dragging if the tab is being edited
               onDrag={() => setIsDragging(true)}
-              onDragEnd={() => setIsDragging(false)}
+              onDragEnd={() => {
+                setIsDragging(false);
+                onReorderComplete?.();
+              }}
+              onHoverStart={() => setHoveringKey(item.key)}
+              onHoverEnd={() => setHoveringKey(null)}
+              initial={false}
             >
-              <div key={item.key}>
-                <Tab
-                  key={item.key}
-                  item={item}
-                  state={state}
-                  orientation={orientation}
-                  overflowing={overflowingTabs.some(tab => tab.key === item.key)}
-                  variant={tabVariant}
-                />
-              </div>
+              <Tab
+                key={item.key}
+                item={item}
+                state={state}
+                orientation={orientation}
+                overflowing={overflowingTabs.some(tab => tab.key === item.key)}
+                variant={tabVariant}
+                as="div"
+              />
             </TabItemWrap>
             <TabDivider
-              isVisible={
-                state.selectedKey === 'temporary-tab' ||
-                (state.selectedKey !== item.key &&
-                  state.collection.getKeyAfter(item.key) !== state.selectedKey)
-              }
+              layout="position"
+              transition={{duration: 0.1}}
+              isVisible={isTabDividerVisible(item.key)}
+              initial={false}
             />
           </Fragment>
         ))}
@@ -208,11 +266,15 @@ function BaseDraggableTabList({
   className,
   outerWrapStyles,
   onReorder,
+  onReorderComplete,
   onAddView,
   tabVariant = 'filled',
   ...props
 }: BaseDraggableTabListProps) {
+  const navigate = useNavigate();
+  const [hoveringKey, setHoveringKey] = useState<Key | null>(null);
   const {rootProps, setTabListState} = useContext(TabsContext);
+  const organization = useOrganization();
   const {
     value,
     defaultValue,
@@ -235,7 +297,12 @@ function BaseDraggableTabList({
       if (!linkTo) {
         return;
       }
-      browserHistory.push(linkTo);
+
+      trackAnalytics('issue_views.switched_views', {
+        organization,
+      });
+
+      navigate(linkTo);
     },
     isDisabled: disabled,
     keyboardActivation,
@@ -249,7 +316,7 @@ function BaseDraggableTabList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selectedKey]);
 
-  const tempTab = [...state.collection].find(item => item.key === 'temporary-tab');
+  const tempTab = [...state.collection].find(item => item.key === TEMPORARY_TAB_KEY);
 
   const {outerRef, setTabElements, persistentTabs, overflowingTabs, addViewTempTabRef} =
     useOverflowingTabs({state});
@@ -258,7 +325,7 @@ function BaseDraggableTabList({
     <TabListOuterWrap
       style={outerWrapStyles}
       hideBorder={hideBorder}
-      borderStyle={state.selectedKey === 'temporary-tab' ? 'dashed' : 'solid'}
+      borderStyle={state.selectedKey === TEMPORARY_TAB_KEY ? 'dashed' : 'solid'}
       ref={outerRef}
     >
       <Tabs
@@ -267,29 +334,57 @@ function BaseDraggableTabList({
         state={state}
         className={className}
         onReorder={onReorder}
+        onReorderComplete={onReorderComplete}
         tabVariant={tabVariant}
         setTabRefs={setTabElements}
         tabs={persistentTabs}
         overflowingTabs={overflowingTabs}
+        hoveringKey={hoveringKey}
+        setHoveringKey={setHoveringKey}
+        tempTabActive={!!tempTab}
+        editingTabKey={props.editingTabKey}
       />
       <AddViewTempTabWrap ref={addViewTempTabRef}>
-        <MotionWrapper>
-          <AddViewButton borderless size="zero" onClick={onAddView}>
+        <AddViewMotionWrapper
+          onHoverStart={() => setHoveringKey('addView')}
+          onHoverEnd={() => setHoveringKey(null)}
+        >
+          <AddViewButton
+            borderless
+            size="zero"
+            onClick={onAddView}
+            analyticsEventName="Issue Views: Add View Clicked"
+            analyticsEventKey="issue_views.add_view.clicked"
+          >
             <StyledIconAdd size="xs" />
             {t('Add View')}
           </AddViewButton>
-        </MotionWrapper>
-        <MotionWrapper>
+        </AddViewMotionWrapper>
+        <TabDivider
+          layout="position"
+          isVisible={
+            defined(tempTab) &&
+            state?.selectedKey !== TEMPORARY_TAB_KEY &&
+            hoveringKey !== 'addView' &&
+            hoveringKey !== TEMPORARY_TAB_KEY
+          }
+        />
+        <MotionWrapper
+          onHoverStart={() => setHoveringKey(TEMPORARY_TAB_KEY)}
+          onHoverEnd={() => setHoveringKey(null)}
+        >
           {tempTab && (
-            <Tab
-              key={tempTab.key}
-              item={tempTab}
-              state={state}
-              orientation={orientation}
-              overflowing={false}
-              variant={tabVariant}
-              borderStyle="dashed"
-            />
+            <TempTabWrap>
+              <Tab
+                key={TEMPORARY_TAB_KEY}
+                item={tempTab}
+                state={state}
+                orientation={orientation}
+                overflowing={false}
+                variant={tabVariant}
+                borderStyle="dashed"
+              />
+            </TempTabWrap>
           )}
         </MotionWrapper>
         {overflowingTabs.length > 0 ? (
@@ -307,8 +402,10 @@ export interface DraggableTabListProps
     TabListStateOptions<DraggableTabListItemProps> {
   onReorder: (newOrder: Node<DraggableTabListItemProps>[]) => void;
   className?: string;
+  editingTabKey?: string;
   hideBorder?: boolean;
   onAddView?: React.MouseEventHandler;
+  onReorderComplete?: () => void;
   outerWrapStyles?: React.CSSProperties;
   showTempTab?: boolean;
   tabVariant?: BaseTabProps['variant'];
@@ -357,6 +454,12 @@ const TabItemWrap = styled(Reorder.Item, {
   z-index: ${p => (p.isSelected ? 1 : 0)};
 `;
 
+const TempTabWrap = styled('div')`
+  display: flex;
+  position: relative;
+  line-height: 1.6;
+`;
+
 /**
  * TabDividers are only visible around NON-selected tabs. They are not visible around the selected tab,
  * but they still create some space and act as a gap between tabs.
@@ -366,12 +469,12 @@ const TabDivider = styled(motion.div, {
 })<{isVisible: boolean}>`
   ${p =>
     p.isVisible &&
-    `
-    background-color: ${p.theme.gray200};
-    height: 16px;
-    width: 1px;
-    border-radius: 6px;
-  `}
+    css`
+      background-color: ${p.theme.gray200};
+      height: 16px;
+      width: 1px;
+      border-radius: 6px;
+    `}
 
   ${p => !p.isVisible && `margin-left: 1px;`}
 
@@ -401,7 +504,7 @@ const AddViewTempTabWrap = styled('div')`
   align-items: center;
 `;
 
-const TabListWrap = styled('ul')`
+const TabListWrap = styled('div')`
   padding: 0;
   margin: 0;
   list-style-type: none;
@@ -414,14 +517,19 @@ const ReorderGroup = styled(Reorder.Group<Node<DraggableTabListItemProps>>)`
   overflow: hidden;
   width: max-content;
   position: relative;
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
 `;
 
 const AddViewButton = styled(Button)`
   display: flex;
   color: ${p => p.theme.gray300};
   font-weight: normal;
-  padding: ${space(0.5)};
-  margin-right: ${space(0.5)};
+  border-radius: ${p => `${p.theme.borderRadius} ${p.theme.borderRadius} 0 0`};
+  padding: ${space(1)} ${space(1)};
+  height: 31px;
+  line-height: 1.4;
 `;
 
 const StyledIconAdd = styled(IconAdd)`
@@ -431,6 +539,13 @@ const StyledIconAdd = styled(IconAdd)`
 const MotionWrapper = styled(motion.div)`
   display: flex;
   position: relative;
+  bottom: 1px;
+`;
+
+const AddViewMotionWrapper = styled(motion.div)`
+  display: flex;
+  position: relative;
+  margin-top: ${space(0.25)};
 `;
 
 const OverflowMenuTrigger = styled(DropdownButton)`

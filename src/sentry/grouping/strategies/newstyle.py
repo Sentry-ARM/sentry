@@ -7,7 +7,7 @@ from collections.abc import Generator
 from typing import Any
 
 from sentry.eventstore.models import Event
-from sentry.grouping.component import GroupingComponent
+from sentry.grouping.component import BaseGroupingComponent
 from sentry.grouping.strategies.base import (
     GroupingContext,
     ReturnedVariants,
@@ -90,7 +90,7 @@ RECURSION_COMPARISON_FIELDS = [
 StacktraceEncoderReturnValue = Any
 
 
-def is_recursion_v1(frame1: Frame, frame2: Frame | None) -> bool:
+def is_recursive_frames(frame1: Frame, frame2: Frame | None) -> bool:
     """
     Returns a boolean indicating whether frames are recursive calls.
     """
@@ -111,34 +111,22 @@ def get_basename(string: str) -> str:
     return _basename_re.split(string)[-1]
 
 
-def get_package_component(package: str, platform: str | None) -> GroupingComponent:
-    if package is None or platform != "native":
-        return GroupingComponent(id="package")
-
-    package = get_basename(package).lower()
-    package_component = GroupingComponent(
-        id="package",
-        values=[package],
-    )
-    return package_component
-
-
 def get_filename_component(
     abs_path: str,
     filename: str | None,
     platform: str | None,
     allow_file_origin: bool = False,
-) -> GroupingComponent:
+) -> BaseGroupingComponent:
     """Attempt to normalize filenames by detecting special filenames and by
     using the basename only.
     """
     if filename is None:
-        return GroupingComponent(id="filename")
+        return BaseGroupingComponent(id="filename")
 
     # Only use the platform independent basename for grouping and
     # lowercase it
     filename = _basename_re.split(filename)[-1].lower()
-    filename_component = GroupingComponent(
+    filename_component = BaseGroupingComponent(
         id="filename",
         values=[filename],
     )
@@ -163,14 +151,14 @@ def get_module_component(
     module: str | None,
     platform: str | None,
     context: GroupingContext,
-) -> GroupingComponent:
+) -> BaseGroupingComponent:
     """Given an absolute path, module and platform returns the module component
     with some necessary cleaning performed.
     """
     if module is None:
-        return GroupingComponent(id="module")
+        return BaseGroupingComponent(id="module")
 
-    module_component = GroupingComponent(
+    module_component = BaseGroupingComponent(
         id="module",
         values=[module],
     )
@@ -212,20 +200,13 @@ def get_function_component(
     platform: str | None,
     sourcemap_used: bool = False,
     context_line_available: bool = False,
-) -> GroupingComponent:
+) -> BaseGroupingComponent:
     """
     Attempt to normalize functions by removing common platform outliers.
 
     - Ruby generates (random?) integers for various anonymous style functions
       such as in erb and the active_support library.
     - Block functions have metadata that we don't care about.
-
-    The `legacy_function_logic` parameter controls if the system should
-    use the frame v1 function name logic or the frame v2 logic.  The difference
-    is that v2 uses the function name consistently and v1 prefers raw function
-    or a trimmed version (of the truncated one) for native.  Related to this is
-    the `prefer_raw_function_name` flag which just flat out prefers the
-    raw function name over the non raw one.
     """
     from sentry.stacktraces.functions import trim_function_name
 
@@ -241,7 +222,7 @@ def get_function_component(
     # for csharp.
     prefer_raw_function_name = platform == "csharp"
 
-    if context["legacy_function_logic"] or prefer_raw_function_name:
+    if prefer_raw_function_name:
         func = raw_function or function
     else:
         func = function or raw_function
@@ -249,9 +230,9 @@ def get_function_component(
             func = trim_function_name(func, platform)
 
     if not func:
-        return GroupingComponent(id="function")
+        return BaseGroupingComponent(id="function")
 
-    function_component = GroupingComponent(
+    function_component = BaseGroupingComponent(
         id="function",
         values=[func],
     )
@@ -278,14 +259,8 @@ def get_function_component(
         if func.startswith("lambda$"):
             function_component.update(contributes=False, hint="ignored lambda function")
 
-    elif behavior_family == "native":
-        if func in ("<redacted>", "<unknown>"):
-            function_component.update(contributes=False, hint="ignored unknown function")
-        elif context["legacy_function_logic"]:
-            new_function = trim_function_name(func, platform, normalize_lambdas=False)
-            if new_function != func:
-                function_component.update(values=[new_function], hint="isolated function")
-                func = new_function
+    elif behavior_family == "native" and func in ("<redacted>", "<unknown>"):
+        function_component.update(contributes=False, hint="ignored unknown function")
 
     elif context["javascript_fuzzing"] and behavior_family == "javascript":
         # This changes Object.foo or Foo.foo into foo so that we can
@@ -357,7 +332,7 @@ def frame(
     if context_line_component is not None:
         values.append(context_line_component)
 
-    rv = GroupingComponent(id="frame", values=values)
+    rv = BaseGroupingComponent(id="frame", values=values)
 
     # if we are in javascript fuzzing mode we want to disregard some
     # frames consistently.  These force common bad stacktraces together
@@ -393,7 +368,7 @@ def frame(
 
 def get_contextline_component(
     frame: Frame, platform: str | None, function: str, context: GroupingContext
-) -> GroupingComponent:
+) -> BaseGroupingComponent:
     """Returns a contextline component.  The caller's responsibility is to
     make sure context lines are only used for platforms where we trust the
     quality of the sourcecode.  It does however protect against some bad
@@ -401,9 +376,9 @@ def get_contextline_component(
     """
     line = " ".join((frame.context_line or "").expandtabs(2).split())
     if not line:
-        return GroupingComponent(id="context-line")
+        return BaseGroupingComponent(id="context-line")
 
-    component = GroupingComponent(
+    component = BaseGroupingComponent(
         id="context-line",
         values=[line],
     )
@@ -448,13 +423,21 @@ def _single_stacktrace_variant(
     values = []
     prev_frame = None
     frames_for_filtering = []
+    found_in_app_frame = False
+
     for frame in frames:
         with context:
-            context["is_recursion"] = is_recursion_v1(frame, prev_frame)
+            context["is_recursion"] = is_recursive_frames(frame, prev_frame)
             frame_component = context.get_single_grouping_component(frame, event=event, **meta)
 
-        if variant == "app" and not frame.in_app:
-            frame_component.update(contributes=False, hint="non app frame")
+        if variant == "app":
+            if frame.in_app:
+                found_in_app_frame = True
+            else:
+                # We have to do this here (rather than it being done in the rust enhancer) because
+                # the rust enhancer doesn't know about system vs app variants
+                frame_component.update(contributes=False, hint="non app frame")
+
         values.append(frame_component)
         frames_for_filtering.append(frame.get_raw_data())
         prev_frame = frame
@@ -478,6 +461,26 @@ def _single_stacktrace_variant(
         exception_data=context["exception_data"],
     )
 
+    # TODO: Ideally this hint would get set by the rust enhancer. Right now the only stacktrace
+    # component hint it sets is one about ignoring stacktraces with contributing frames because the
+    # number of contributing frames isn't big enough. In that case it also sets `contributes` to
+    # false, as it does when there are no contributing frames. In this latter case it doesn't set a
+    # hint, though, so we do it here.
+    if not main_variant.hint and not main_variant.contributes:
+        if len(frames) == 0:
+            frames_description = "frames"
+        elif variant == "system":
+            frames_description = "contributing frames"
+        elif variant == "app":
+            # If there are in-app frames but the stacktrace nontheless doesn't contribute, it must
+            # be because all of the frames got marked as non-contributing in the enhancer
+            if found_in_app_frame:
+                frames_description = "contributing frames"
+            else:
+                frames_description = "in-app frames"
+
+        main_variant.hint = f"ignored because it contains no {frames_description}"
+
     return {variant: main_variant}
 
 
@@ -495,7 +498,7 @@ def stacktrace_variant_processor(
 def single_exception(
     interface: SingleException, event: Event, context: GroupingContext, **meta: Any
 ) -> ReturnedVariants:
-    type_component = GroupingComponent(
+    type_component = BaseGroupingComponent(
         id="type",
         values=[interface.type] if interface.type else [],
     )
@@ -519,7 +522,7 @@ def single_exception(
                 contributes=False, hint="ignored because exception is synthetic"
             )
         if interface.mechanism.meta and "ns_error" in interface.mechanism.meta:
-            ns_error_component = GroupingComponent(
+            ns_error_component = BaseGroupingComponent(
                 id="ns-error",
                 values=[
                     interface.mechanism.meta["ns_error"].get("domain"),
@@ -535,7 +538,7 @@ def single_exception(
             )
     else:
         stacktrace_variants = {
-            "app": GroupingComponent(id="stacktrace"),
+            "app": BaseGroupingComponent(id="stacktrace"),
         }
 
     rv = {}
@@ -550,7 +553,7 @@ def single_exception(
             values.append(ns_error_component)
 
         if context["with_exception_value_fallback"]:
-            value_component = GroupingComponent(
+            value_component = BaseGroupingComponent(
                 id="value",
             )
 
@@ -584,7 +587,7 @@ def single_exception(
 
             values.append(value_component)
 
-        rv[variant] = GroupingComponent(id="exception", values=values)
+        rv[variant] = BaseGroupingComponent(id="exception", values=values)
 
     return rv
 
@@ -625,7 +628,7 @@ def chained_exception(
         return exception_components[id(exceptions[0])]
 
     # Case 2: produce a component for each chained exception
-    by_name: dict[str, list[GroupingComponent]] = {}
+    by_name: dict[str, list[BaseGroupingComponent]] = {}
 
     for exception in exceptions:
         for name, component in exception_components[id(exception)].items():
@@ -634,7 +637,7 @@ def chained_exception(
     rv = {}
 
     for name, component_list in by_name.items():
-        rv[name] = GroupingComponent(
+        rv[name] = BaseGroupingComponent(
             id="chained-exception",
             values=component_list,
         )
@@ -774,7 +777,7 @@ def threads(
         return thread_variants
 
     return {
-        "app": GroupingComponent(
+        "app": BaseGroupingComponent(
             id="threads",
             contributes=False,
             hint=(
@@ -795,7 +798,7 @@ def _filtered_threads(
     stacktrace = threads[0].get("stacktrace")
     if not stacktrace:
         return {
-            "app": GroupingComponent(
+            "app": BaseGroupingComponent(
                 id="threads", contributes=False, hint="thread has no stacktrace"
             )
         }
@@ -805,7 +808,7 @@ def _filtered_threads(
     for name, stacktrace_component in context.get_grouping_component(
         stacktrace, event=event, **meta
     ).items():
-        rv[name] = GroupingComponent(id="threads", values=[stacktrace_component])
+        rv[name] = BaseGroupingComponent(id="threads", values=[stacktrace_component])
 
     return rv
 

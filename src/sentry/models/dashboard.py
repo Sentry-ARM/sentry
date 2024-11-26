@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from django.db import models
@@ -76,6 +77,32 @@ class Dashboard(Model):
         if dashboard_id in all_prebuilt_dashboards:
             return all_prebuilt_dashboards[dashboard_id]
         return None
+
+    @classmethod
+    def incremental_title(cls, organization, name):
+        """
+        Given a dashboard name that migh already exist, returns a new unique name that does not exist, by appending the word "copy" and an integer if necessary.
+        """
+
+        base_name = re.sub(r" ?copy ?(\d+)?$", "", name)
+        matching_dashboards = cls.objects.filter(
+            organization=organization, title__regex=rf"^{re.escape(base_name)} ?(copy)? ?(\d+)?$"
+        ).values("title")
+
+        if not matching_dashboards:
+            return name
+
+        next_copy_number = 0
+        for dashboard in matching_dashboards:
+            match = re.search(r" copy ?(\d+)?", dashboard["title"])
+            if match:
+                copy_number = int(match.group(1) or 0)
+                next_copy_number = max(next_copy_number, copy_number + 1)
+
+        if next_copy_number == 0:
+            return f"{base_name} copy"
+
+        return f"{base_name} copy {next_copy_number}"
 
 
 @region_silo_model
@@ -186,9 +213,11 @@ def get_prebuilt_dashboards(organization, user) -> list[dict[str, Any]]:
                     "queries": [
                         {
                             "name": "Known Users",
-                            "conditions": "has:user.email"
-                            if has_discover_split
-                            else "has:user.email !event.type:transaction",
+                            "conditions": (
+                                "has:user.email"
+                                if has_discover_split
+                                else "has:user.email !event.type:transaction"
+                            ),
                             "fields": ["count_unique(user)"],
                             "aggregates": ["count_unique(user)"],
                             "columns": [],
@@ -196,9 +225,11 @@ def get_prebuilt_dashboards(organization, user) -> list[dict[str, Any]]:
                         },
                         {
                             "name": "Anonymous Users",
-                            "conditions": "!has:user.email"
-                            if has_discover_split
-                            else "!has:user.email !event.type:transaction",
+                            "conditions": (
+                                "!has:user.email"
+                                if has_discover_split
+                                else "!has:user.email !event.type:transaction"
+                            ),
                             "fields": ["count_unique(user)"],
                             "aggregates": ["count_unique(user)"],
                             "columns": [],
@@ -238,9 +269,11 @@ def get_prebuilt_dashboards(organization, user) -> list[dict[str, Any]]:
                     "queries": [
                         {
                             "name": "Error counts",
-                            "conditions": "has:geo.country_code"
-                            if has_discover_split
-                            else "has:geo.country_code !event.type:transaction",
+                            "conditions": (
+                                "has:geo.country_code"
+                                if has_discover_split
+                                else "has:geo.country_code !event.type:transaction"
+                            ),
                             "fields": ["geo.country_code", "geo.region", "count()"],
                             "aggregates": ["count()"],
                             "columns": ["geo.country_code", "geo.region"],
@@ -256,9 +289,11 @@ def get_prebuilt_dashboards(organization, user) -> list[dict[str, Any]]:
                     "queries": [
                         {
                             "name": "",
-                            "conditions": "has:browser.name"
-                            if has_discover_split
-                            else "has:browser.name !event.type:transaction",
+                            "conditions": (
+                                "has:browser.name"
+                                if has_discover_split
+                                else "has:browser.name !event.type:transaction"
+                            ),
                             "fields": ["browser.name", "count()"],
                             "aggregates": ["count()"],
                             "columns": ["browser.name"],

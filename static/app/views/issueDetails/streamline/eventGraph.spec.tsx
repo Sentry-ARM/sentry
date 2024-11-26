@@ -4,33 +4,16 @@ import {GroupFixture} from 'sentry-fixture/group';
 import {LocationFixture} from 'sentry-fixture/locationFixture';
 import {OrganizationFixture} from 'sentry-fixture/organization';
 import {ProjectFixture} from 'sentry-fixture/project';
+import {RouterFixture} from 'sentry-fixture/routerFixture';
 import {TagsFixture} from 'sentry-fixture/tags';
 
 import {render, screen, userEvent} from 'sentry-test/reactTestingLibrary';
 
 import PageFiltersStore from 'sentry/stores/pageFiltersStore';
 import ProjectsStore from 'sentry/stores/projectsStore';
-import {useLocation} from 'sentry/utils/useLocation';
-import {EventDetails} from 'sentry/views/issueDetails/streamline/eventDetails';
+import {EventGraph} from 'sentry/views/issueDetails/streamline/eventGraph';
 
-jest.mock('sentry/utils/useLocation');
-jest.mock('sentry/components/events/suspectCommits');
-jest.mock('sentry/views/issueDetails/groupEventDetails/groupEventDetailsContent');
-jest.mock('screenfull', () => ({
-  enabled: true,
-  isFullscreen: false,
-  request: jest.fn(),
-  exit: jest.fn(),
-  on: jest.fn(),
-  off: jest.fn(),
-}));
-
-const mockUseNavigate = jest.fn();
-jest.mock('sentry/utils/useNavigate', () => ({
-  useNavigate: () => mockUseNavigate,
-}));
-
-const mockUseLocation = jest.mocked(useLocation);
+import {EventDetailsHeader} from './eventDetailsHeader';
 
 describe('EventGraph', () => {
   const organization = OrganizationFixture();
@@ -39,13 +22,22 @@ describe('EventGraph', () => {
   });
   const group = GroupFixture();
   const event = EventFixture({id: 'event-id'});
-  const persistantQuery = ` issue:${group.shortId}`;
-  const defaultProps = {project, group, event};
+  const persistantQuery = `issue:${group.shortId}`;
+  const defaultProps = {group, event, project};
 
-  let mockEventStats;
+  let mockEventStats: jest.Mock;
 
   beforeEach(() => {
-    mockUseLocation.mockReturnValue(LocationFixture());
+    MockApiClient.clearMockResponses();
+    MockApiClient.addMockResponse({
+      url: `/organizations/${organization.slug}/issues/${group.id}/tags/`,
+      body: TagsFixture(),
+      method: 'GET',
+    });
+    MockApiClient.addMockResponse({
+      url: `/organizations/${organization.slug}/releases/stats/`,
+      body: [],
+    });
     PageFiltersStore.init();
     PageFiltersStore.onInitializeUrlState(
       {
@@ -56,66 +48,66 @@ describe('EventGraph', () => {
       new Set(['environments'])
     );
     ProjectsStore.loadInitialData([project]);
-    MockApiClient.clearMockResponses();
-    MockApiClient.addMockResponse({
-      url: `/projects/${organization.slug}/${project.slug}/events/${event.id}/actionable-items/`,
-      body: {errors: []},
-      method: 'GET',
-    });
-    MockApiClient.addMockResponse({
-      url: `/organizations/${organization.slug}/issues/${group.id}/tags/`,
-      body: TagsFixture(),
-      method: 'GET',
-    });
     mockEventStats = MockApiClient.addMockResponse({
       url: `/organizations/${organization.slug}/events-stats/`,
       body: {'count()': EventsStatsFixture(), 'count_unique(user)': EventsStatsFixture()},
       method: 'GET',
     });
+    MockApiClient.addMockResponse({
+      url: `/organizations/${organization.slug}/events/`,
+      body: {data: [{'count_unique(user)': 21}]},
+    });
   });
 
   it('displays allows toggling data sets', async function () {
-    render(<EventDetails {...defaultProps} />, {organization});
-    await screen.findByText(event.id);
+    render(<EventDetailsHeader {...defaultProps} />, {organization});
+    expect(await screen.findByTestId('event-graph-loading')).not.toBeInTheDocument();
 
-    const count = EventsStatsFixture().data.reduce(
-      (currentCount, item) => currentCount + item[1][0].count,
-      0
-    );
+    const eventsToggle = screen.getByRole('button', {
+      name: 'Toggle graph series - Events',
+    });
+    const usersToggle = screen.getByRole('button', {name: 'Toggle graph series - Users'});
 
-    const eventsToggle = screen.getByRole('button', {name: `Events ${count}`});
-    const usersToggle = screen.getByRole('button', {name: `Users ${count}`});
+    expect(eventsToggle).toHaveTextContent('444');
+    expect(usersToggle).toHaveTextContent('21');
 
-    await userEvent.click(eventsToggle);
-    expect(eventsToggle).toBeEnabled();
-    expect(usersToggle).toBeDisabled();
-
-    await userEvent.click(eventsToggle);
-    expect(eventsToggle).toBeEnabled();
-    expect(usersToggle).toBeEnabled();
-
-    await userEvent.click(usersToggle);
+    // Defaults to events graph
     expect(eventsToggle).toBeDisabled();
     expect(usersToggle).toBeEnabled();
 
+    // Switch to users graph
+    await userEvent.click(usersToggle);
+    expect(eventsToggle).toBeEnabled();
+    expect(usersToggle).toBeDisabled();
+
+    // Another click should do nothing
+    await userEvent.click(usersToggle);
+    expect(eventsToggle).toBeEnabled();
+    expect(usersToggle).toBeDisabled();
+
+    // Switch back to events
     await userEvent.click(eventsToggle);
     expect(eventsToggle).toBeDisabled();
     expect(usersToggle).toBeEnabled();
   });
 
   it('renders the graph using a discover event stats query', async function () {
-    render(<EventDetails {...defaultProps} />, {organization});
-    await screen.findByText(event.id);
+    render(<EventGraph {...defaultProps} />, {organization});
+    expect(await screen.findByTestId('event-graph-loading')).not.toBeInTheDocument();
+
     expect(mockEventStats).toHaveBeenCalledWith(
       '/organizations/org-slug/events-stats/',
       expect.objectContaining({
         query: {
           dataset: 'errors',
           environment: [],
-          interval: '12h',
-          project: '2',
+          field: expect.anything(),
+          partial: 1,
+          interval: '4h',
+          per_page: 50,
+          project: [project.id],
           query: persistantQuery,
-          referrer: 'issue_details.streamline',
+          referrer: 'issue_details.streamline_graph',
           statsPeriod: '14d',
           yAxis: ['count()', 'count_unique(user)'],
         },
@@ -124,8 +116,8 @@ describe('EventGraph', () => {
   });
 
   it('allows filtering by environment', async function () {
-    render(<EventDetails {...defaultProps} />, {organization});
-    await screen.findByText(event.id);
+    render(<EventDetailsHeader {...defaultProps} />, {organization});
+    expect(await screen.findByTestId('event-graph-loading')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', {name: 'All Envs'}));
     await userEvent.click(screen.getByRole('row', {name: 'production'}));
@@ -140,36 +132,6 @@ describe('EventGraph', () => {
     );
   });
 
-  it('allows filtering by search token', async function () {
-    const [tagKey, tagValue] = ['user.email', 'leander.rodrigues@sentry.io'];
-    const locationQuery = {
-      query: {
-        query: `${tagKey}:${tagValue}`,
-      },
-    };
-    MockApiClient.addMockResponse({
-      url: `/organizations/${organization.slug}/tags/${tagKey}/values/`,
-      body: [
-        {
-          key: tagKey,
-          name: tagValue,
-          value: tagValue,
-        },
-      ],
-      method: 'GET',
-    });
-
-    render(<EventDetails {...defaultProps} />, {organization});
-    await screen.findByText(event.id);
-
-    const search = screen.getAllByRole('combobox', {name: 'Add a search term'})[0];
-    await userEvent.type(search, `${tagKey}:`);
-    await userEvent.keyboard(`${tagValue}{enter}{enter}`);
-    expect(mockUseNavigate).toHaveBeenCalledWith(expect.objectContaining(locationQuery), {
-      replace: true,
-    });
-  });
-
   it('updates query from location param change', async function () {
     const [tagKey, tagValue] = ['user.email', 'leander.rodrigues@sentry.io'];
     const locationQuery = {
@@ -177,27 +139,29 @@ describe('EventGraph', () => {
         query: `${tagKey}:${tagValue}`,
       },
     };
-    mockUseLocation.mockReset();
-    mockUseLocation.mockReturnValue(LocationFixture(locationQuery));
-    render(<EventDetails {...defaultProps} />, {organization});
-    await screen.findByText(event.id);
+    const router = RouterFixture({
+      location: LocationFixture(locationQuery),
+    });
+
+    render(<EventDetailsHeader {...defaultProps} />, {organization, router});
+    expect(await screen.findByTestId('event-graph-loading')).not.toBeInTheDocument();
 
     expect(mockEventStats).toHaveBeenCalledWith(
       '/organizations/org-slug/events-stats/',
       expect.objectContaining({
         query: expect.objectContaining({
-          query: locationQuery.query.query + persistantQuery,
+          query: [persistantQuery, locationQuery.query.query].join(' '),
         }),
       })
     );
   });
 
   it('allows filtering by date', async function () {
-    render(<EventDetails {...defaultProps} />, {organization});
-    await screen.findByText(event.id);
+    render(<EventDetailsHeader {...defaultProps} />, {organization});
+    expect(await screen.findByTestId('event-graph-loading')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', {name: '14D'}));
-    await userEvent.click(screen.getByRole('option', {name: 'Last 7 days'}));
+    await userEvent.click(await screen.findByRole('option', {name: 'Last 7 days'}));
 
     expect(mockEventStats).toHaveBeenCalledWith(
       '/organizations/org-slug/events-stats/',
@@ -207,5 +171,23 @@ describe('EventGraph', () => {
         }),
       })
     );
+  });
+
+  it('displays error messages from bad queries', async function () {
+    const errorMessage = 'wrong, try again';
+    const mockStats = MockApiClient.addMockResponse({
+      url: `/organizations/${organization.slug}/events-stats/`,
+      body: {detail: errorMessage},
+      method: 'GET',
+      statusCode: 400,
+    });
+
+    render(<EventDetailsHeader {...defaultProps} />, {organization});
+    await screen.findByRole('button', {name: '14D'});
+
+    expect(mockStats).toHaveBeenCalled();
+    expect(screen.getByText(RegExp(errorMessage))).toBeInTheDocument();
+    // Omit the graph
+    expect(screen.queryByRole('figure')).not.toBeInTheDocument();
   });
 });

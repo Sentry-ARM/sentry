@@ -380,7 +380,10 @@ class DiscoverDatasetConfig(DatasetConfig):
                 SnQLFunction(
                     "to_other",
                     required_args=[
-                        ColumnArg("column", allowed_columns=["release", "trace.parent_span", "id"]),
+                        ColumnArg(
+                            "column",
+                            allowed_columns=["release", "trace.parent_span", "id", "trace.span"],
+                        ),
                         SnQLStringArg("value", unquote=True, unescape_quotes=True),
                     ],
                     optional_args=[
@@ -645,18 +648,16 @@ class DiscoverDatasetConfig(DatasetConfig):
                 ),
                 SnQLFunction(
                     "eps",
-                    snql_aggregate=lambda args, alias: Function(
-                        "divide", [Function("count", []), args["interval"]], alias
+                    snql_aggregate=lambda args, alias: function_aliases.resolve_eps(
+                        args, alias, self.builder
                     ),
                     optional_args=[IntervalDefault("interval", 1, None)],
                     default_result_type="rate",
                 ),
                 SnQLFunction(
                     "epm",
-                    snql_aggregate=lambda args, alias: Function(
-                        "divide",
-                        [Function("count", []), Function("divide", [args["interval"], 60])],
-                        alias,
+                    snql_aggregate=lambda args, alias: function_aliases.resolve_epm(
+                        args, alias, self.builder
                     ),
                     optional_args=[IntervalDefault("interval", 1, None)],
                     default_result_type="rate",

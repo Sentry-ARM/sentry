@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import Mock
 
@@ -9,15 +9,17 @@ import pytest
 from openai.types.chat.chat_completion import ChatCompletion, Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
+from sentry.eventstore.models import Event
 from sentry.feedback.usecases.create_feedback import (
     FeedbackCreationSource,
     create_feedback_issue,
     fix_for_issue_platform,
+    is_in_feedback_denylist,
+    shim_to_feedback,
     validate_issue_platform_event_schema,
 )
 from sentry.models.group import Group, GroupStatus
 from sentry.testutils.helpers import Feature
-from sentry.testutils.helpers.datetime import iso_format
 from sentry.testutils.pytest.fixtures import django_db_all
 from sentry.types.group import GroupSubStatus
 
@@ -83,7 +85,7 @@ def mock_feedback_event(project_id: int, dt: datetime):
         },
         "event_id": "56b08cf7852c42cbb95e4a6998c66ad6",
         "timestamp": dt.timestamp(),
-        "received": iso_format(dt),
+        "received": dt.isoformat(),
         "environment": "prod",
         "release": "frontend@daf1316f209d961443664cd6eb4231ca154db502",
         "user": {
@@ -720,7 +722,6 @@ def test_create_feedback_spam_detection_set_status_ignored(
         {
             "organizations:user-feedback-spam-filter-actions": True,
             "organizations:user-feedback-spam-filter-ingest": True,
-            "organizations:feedback-ingest": True,
         }
     ):
         event = {
@@ -768,3 +769,110 @@ def test_create_feedback_spam_detection_set_status_ignored(
         group = Group.objects.get()
         assert group.status == GroupStatus.IGNORED
         assert group.substatus == GroupSubStatus.FOREVER
+
+
+@django_db_all
+def test_create_feedback_large_message_truncated(
+    default_project, mock_produce_occurrence_to_kafka, set_sentry_option
+):
+    """Large messages are truncated before producing to kafka."""
+    with set_sentry_option("feedback.message.max-size", 4096):
+        event = mock_feedback_event(default_project.id, datetime.now(UTC))
+        event["contexts"]["feedback"]["message"] = "a" * 7007
+        create_feedback_issue(
+            event, default_project.id, FeedbackCreationSource.NEW_FEEDBACK_ENVELOPE
+        )
+
+    kwargs = mock_produce_occurrence_to_kafka.call_args[1]
+    assert len(kwargs["occurrence"].subtitle) == 4096
+
+
+@django_db_all
+def test_create_feedback_large_message_skips_spam_detection(
+    default_project, set_sentry_option, monkeypatch
+):
+    """If spam is enabled, large messages are marked as spam without making an LLM request."""
+    with (
+        Feature(
+            {
+                "organizations:user-feedback-spam-filter-actions": True,
+                "organizations:user-feedback-spam-filter-ingest": True,
+            }
+        ),
+        set_sentry_option("feedback.message.max-size", 4096),
+    ):
+
+        event = mock_feedback_event(default_project.id, datetime.now(UTC))
+        event["contexts"]["feedback"]["message"] = "a" * 7007
+
+        mock_complete_prompt = Mock()
+        monkeypatch.setattr("sentry.llm.usecases.complete_prompt", mock_complete_prompt)
+
+        create_feedback_issue(
+            event, default_project.id, FeedbackCreationSource.NEW_FEEDBACK_ENVELOPE
+        )
+        assert mock_complete_prompt.call_count == 0
+
+        group = Group.objects.get()
+        assert group.status == GroupStatus.IGNORED
+        assert group.substatus == GroupSubStatus.FOREVER
+
+
+"""
+Unit tests for shim_to_feedback error cases. The typical behavior of this function is tested in
+test_project_user_reports, test_post_process, and test_update_user_reports.
+"""
+
+
+@django_db_all
+def test_shim_to_feedback_missing_event(default_project, monkeypatch):
+    # Not allowing this since creating feedbacks with no environment (copied from the associated event) doesn't work well.
+    mock_create_feedback_issue = Mock()
+    monkeypatch.setattr(
+        "sentry.feedback.usecases.create_feedback.create_feedback_issue", mock_create_feedback_issue
+    )
+    report_dict = {
+        "name": "andrew",
+        "email": "aliu@example.com",
+        "comments": "Shim this",
+        "event_id": "a" * 32,
+        "level": "error",
+    }
+    shim_to_feedback(
+        report_dict, None, default_project, FeedbackCreationSource.USER_REPORT_ENVELOPE  # type: ignore[arg-type]
+    )
+    # Error is handled:
+    assert mock_create_feedback_issue.call_count == 0
+
+
+@django_db_all
+def test_shim_to_feedback_missing_fields(default_project, monkeypatch):
+    # Email and comments are required to shim. Tests key errors are handled.
+    mock_create_feedback_issue = Mock()
+    monkeypatch.setattr(
+        "sentry.feedback.usecases.create_feedback.create_feedback_issue", mock_create_feedback_issue
+    )
+    report_dict = {
+        "name": "andrew",
+        "event_id": "a" * 32,
+        "level": "error",
+    }
+    event = Event(event_id="a" * 32, project_id=default_project.id)
+    shim_to_feedback(
+        report_dict, event, default_project, FeedbackCreationSource.USER_REPORT_ENVELOPE  # type: ignore[arg-type]
+    )
+    assert mock_create_feedback_issue.call_count == 0
+
+
+@django_db_all
+def test_denylist(set_sentry_option, default_project):
+    with set_sentry_option(
+        "feedback.organizations.slug-denylist", [default_project.organization.slug]
+    ):
+        assert is_in_feedback_denylist(default_project.organization) is True
+
+
+@django_db_all
+def test_denylist_not_in_list(set_sentry_option, default_project):
+    with set_sentry_option("feedback.organizations.slug-denylist", ["not-in-list"]):
+        assert is_in_feedback_denylist(default_project.organization) is False

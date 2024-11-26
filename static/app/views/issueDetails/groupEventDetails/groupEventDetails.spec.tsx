@@ -29,8 +29,6 @@ import {RouteContext} from 'sentry/views/routeContext';
 
 const TRACE_ID = '797cda4e24844bdc90e0efe741616047';
 
-jest.mock('screenfull', () => ({}));
-
 const makeDefaultMockData = (
   organization?: Organization,
   project?: Project,
@@ -105,7 +103,10 @@ const makeDefaultMockData = (
 };
 
 function TestComponent(
-  props: Partial<GroupEventDetailsProps> & {query?: Record<string, string | string[]>}
+  props: Partial<GroupEventDetailsProps> & {
+    organization?: Organization;
+    query?: Record<string, string | string[]>;
+  }
 ) {
   const {organization, project, group, event, router} = makeDefaultMockData(
     props.organization,
@@ -117,8 +118,7 @@ function TestComponent(
     group,
     event,
     project,
-    organization,
-    params: {groupId: group.id, eventId: '1'},
+    params: {groupId: group.id, orgId: organization.slug, eventId: '1'},
     router,
     location: {} as Location<any>,
     route: {},
@@ -352,6 +352,22 @@ const mockGroupApis = (
     url: `/projects/${organization.slug}/${project.slug}/`,
     body: project,
   });
+
+  MockApiClient.addMockResponse({
+    url: `/issues/${group.id}/autofix/setup/`,
+    method: 'GET',
+    body: {
+      integration: {
+        ok: true,
+      },
+      genAIConsent: {
+        ok: true,
+      },
+      githubWriteIntegration: {
+        ok: true,
+      },
+    },
+  });
 };
 
 describe('groupEventDetails', () => {
@@ -415,7 +431,7 @@ describe('groupEventDetails', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders the Span Evidence and Resources section for Performance Issues', async function () {
+  it('renders the Span Evidence section for Performance Issues', async function () {
     const props = makeDefaultMockData();
     const group: Group = GroupFixture({
       issueCategory: IssueCategory.PERFORMANCE,
@@ -449,14 +465,9 @@ describe('groupEventDetails', () => {
         name: /span evidence/i,
       })
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', {
-        name: /resources/i,
-      })
-    ).toBeInTheDocument();
   });
 
-  it('renders the Function Evidence and Resources section for Profile Issues', async function () {
+  it('renders the Function Evidence section for Profile Issues', async function () {
     const props = makeDefaultMockData();
     const group: Group = GroupFixture({
       issueCategory: IssueCategory.PERFORMANCE,
@@ -493,11 +504,6 @@ describe('groupEventDetails', () => {
     expect(
       await screen.findByRole('heading', {
         name: /function evidence/i,
-      })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', {
-        name: /resources/i,
       })
     ).toBeInTheDocument();
   });

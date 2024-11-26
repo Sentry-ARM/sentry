@@ -1,5 +1,4 @@
 import * as Sentry from '@sentry/react';
-import type {eventWithTime} from '@sentry-internal/rrweb';
 import memoize from 'lodash/memoize';
 import {type Duration, duration} from 'moment-timezone';
 
@@ -7,7 +6,7 @@ import {defined} from 'sentry/utils';
 import domId from 'sentry/utils/domId';
 import localStorageWrapper from 'sentry/utils/localStorage';
 import clamp from 'sentry/utils/number/clamp';
-import extractHtmlandSelector from 'sentry/utils/replays/extractHtml';
+import extractDomNodes from 'sentry/utils/replays/extractDomNodes';
 import hydrateBreadcrumbs, {
   replayInitBreadcrumb,
 } from 'sentry/utils/replays/hydrateBreadcrumbs';
@@ -29,7 +28,6 @@ import type {
   MemoryFrame,
   OptionFrame,
   RecordingFrame,
-  ReplayFrame,
   serializedNodeWithId,
   SlowClickFrame,
   SpanFrame,
@@ -39,9 +37,9 @@ import type {
 import {
   BreadcrumbCategories,
   EventType,
-  getNodeIds,
   IncrementalSource,
   isCLSFrame,
+  isConsoleFrame,
   isDeadClick,
   isDeadRageClick,
   isPaintFrame,
@@ -65,6 +63,11 @@ interface ReplayReaderParams {
    * like performance-errors or replay-errors
    */
   errors: ReplayError[] | undefined;
+
+  /**
+   * Is replay data still fetching?
+   */
+  fetching: boolean;
 
   /**
    * The root Replay event, created at the start of the browser session.
@@ -144,54 +147,6 @@ function removeDuplicateNavCrumbs(
   return otherBreadcrumbFrames.concat(uniqueNavCrumbs);
 }
 
-const extractDomNodes = {
-  shouldVisitFrame: frame => {
-    const nodeIds = getNodeIds(frame);
-    return nodeIds.filter(nodeId => nodeId !== -1).length > 0;
-  },
-  onVisitFrame: (frame, collection, replayer) => {
-    const mirror = replayer.getMirror();
-    const nodeIds = getNodeIds(frame);
-    const {html, selectors} = extractHtmlandSelector((nodeIds ?? []) as number[], mirror);
-    collection.set(frame as ReplayFrame, {
-      frame,
-      html,
-      selectors,
-      timestamp: frame.timestampMs,
-    });
-  },
-};
-
-const countDomNodes = function (frames: eventWithTime[]) {
-  let frameCount = 0;
-  const length = frames?.length ?? 0;
-  const frameStep = Math.max(Math.round(length * 0.007), 1);
-
-  let prevIds: number[] = [];
-
-  return {
-    shouldVisitFrame() {
-      frameCount++;
-      return frameCount % frameStep === 0;
-    },
-    onVisitFrame(frame, collection, replayer) {
-      const ids = replayer.getMirror().getIds(); // gets list of DOM nodes present
-      const count = ids.length;
-      const added = ids.filter(id => !prevIds.includes(id)).length;
-      const removed = prevIds.filter(id => !ids.includes(id)).length;
-      collection.set(frame as RecordingFrame, {
-        count,
-        added,
-        removed,
-        timestampMs: frame.timestamp,
-        startTimestampMs: frame.timestamp,
-        endTimestampMs: frame.timestamp,
-      });
-      prevIds = ids;
-    },
-  };
-};
-
 export default class ReplayReader {
   static factory({
     attachments,
@@ -199,6 +154,7 @@ export default class ReplayReader {
     replayRecord,
     clipWindow,
     featureFlags,
+    fetching,
   }: ReplayReaderParams) {
     if (!attachments || !replayRecord || !errors) {
       return null;
@@ -210,6 +166,7 @@ export default class ReplayReader {
         errors,
         replayRecord,
         featureFlags,
+        fetching,
         clipWindow,
       });
     } catch (err) {
@@ -223,6 +180,7 @@ export default class ReplayReader {
         attachments: [],
         errors: [],
         featureFlags,
+        fetching,
         replayRecord,
         clipWindow,
       });
@@ -233,10 +191,12 @@ export default class ReplayReader {
     attachments,
     errors,
     featureFlags,
+    fetching,
     replayRecord,
     clipWindow,
   }: RequiredNotNull<ReplayReaderParams>) {
     this._cacheKey = domId('replayReader-');
+    this._fetching = fetching;
 
     if (replayRecord.is_archived) {
       this._replayRecord = replayRecord;
@@ -336,6 +296,7 @@ export default class ReplayReader {
   private _duration: Duration = duration(0);
   private _errors: ErrorFrame[] = [];
   private _featureFlags: string[] | undefined = [];
+  private _fetching: boolean = true;
   private _optionFrame: undefined | OptionFrame;
   private _replayRecord: ReplayRecord;
   private _sortedBreadcrumbFrames: BreadcrumbFrame[] = [];
@@ -467,21 +428,10 @@ export default class ReplayReader {
     return this.processingErrors().length;
   };
 
-  getCountDomNodes = memoize(async () => {
-    const {onVisitFrame, shouldVisitFrame} = countDomNodes(this.getRRWebMutations());
-
-    const results = await replayerStepper({
-      frames: this.getRRWebMutations(),
-      rrwebEvents: this.getRRWebFrames(),
-      startTimestampMs: this.getReplay().started_at.getTime() ?? 0,
-      onVisitFrame,
-      shouldVisitFrame,
-    });
-
-    return results;
-  });
-
   getExtractDomNodes = memoize(async () => {
+    if (this._fetching) {
+      return null;
+    }
     const {onVisitFrame, shouldVisitFrame} = extractDomNodes;
 
     const results = await replayerStepper({
@@ -538,10 +488,7 @@ export default class ReplayReader {
   getErrorFrames = () => this._errors;
 
   getConsoleFrames = memoize(() =>
-    this._sortedBreadcrumbFrames.filter(
-      frame =>
-        frame.category === 'console' || !BreadcrumbCategories.includes(frame.category)
-    )
+    this._sortedBreadcrumbFrames.filter(frame => isConsoleFrame(frame))
   );
 
   getNavigationFrames = memoize(() =>
@@ -589,11 +536,18 @@ export default class ReplayReader {
     this._sortedSpanFrames.filter((frame): frame is MemoryFrame => frame.op === 'memory')
   );
 
+  getCustomFrames = memoize(() =>
+    this._sortedBreadcrumbFrames.filter(
+      frame => !BreadcrumbCategories.includes(frame.category)
+    )
+  );
+
   getChapterFrames = memoize(() =>
     this._trimFramesToClipWindow(
       [
         ...this.getPerfFrames(),
         ...this.getWebVitalFrames(),
+        ...this.getCustomFrames(),
         ...this._sortedBreadcrumbFrames.filter(frame =>
           [
             'replay.hydrate-error',
@@ -671,7 +625,7 @@ export default class ReplayReader {
     return Boolean(this._sortedRRWebEvents.filter(findCanvas).length);
   });
 
-  isVideoReplay = memoize(() => this.getVideoEvents().length > 0);
+  isVideoReplay = () => this.getVideoEvents().length > 0;
 
   isNetworkDetailsSetup = memoize(() => {
     const sdkOptions = this.getSDKOptions();

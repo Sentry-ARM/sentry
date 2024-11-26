@@ -6,6 +6,7 @@ from django import forms
 from django.conf import settings
 from django.db import router, transaction
 from django.utils import timezone
+from parsimonious.exceptions import ParseError
 from rest_framework import serializers
 from snuba_sdk import Column, Condition, Entity, Limit, Op
 from urllib3.exceptions import MaxRetryError, TimeoutError
@@ -164,11 +165,17 @@ class AlertRuleSerializer(CamelSnakeModelSerializer[AlertRule]):
             self.context["organization"],
             actor=self.context.get("user", None),
         )
+        allow_eap = features.has(
+            "organizations:alerts-eap",
+            self.context["organization"],
+            actor=self.context.get("user", None),
+        )
 
         try:
             if not check_aggregate_column_support(
                 aggregate,
                 allow_mri=allow_mri,
+                allow_eap=allow_eap,
             ):
                 raise serializers.ValidationError(
                     "Invalid Metric: We do not currently support this field."
@@ -256,6 +263,11 @@ class AlertRuleSerializer(CamelSnakeModelSerializer[AlertRule]):
             raise serializers.ValidationError(
                 "Must send 1 or 2 triggers - A critical trigger, and an optional warning trigger"
             )
+        for trigger in triggers:
+            if not trigger.get("actions", []):
+                raise serializers.ValidationError(
+                    "Each trigger must have an associated action for this alert to fire."
+                )
 
         if query_type == SnubaQuery.Type.CRASH_RATE:
             data["event_types"] = []
@@ -351,7 +363,9 @@ class AlertRuleSerializer(CamelSnakeModelSerializer[AlertRule]):
         except UnsupportedQuerySubscription as e:
             raise serializers.ValidationError(f"{e}")
 
-        self._validate_snql_query(data, entity_subscription, projects)
+        # TODO(edward): Bypass snql query validation for EAP queries. Do we need validation for rpc requests?
+        if dataset != Dataset.EventsAnalyticsPlatform:
+            self._validate_snql_query(data, entity_subscription, projects)
 
     def _validate_snql_query(self, data, entity_subscription, projects):
         end = timezone.now()
@@ -409,7 +423,12 @@ class AlertRuleSerializer(CamelSnakeModelSerializer[AlertRule]):
         if comparison_delta is None:
             return
 
-        translator = self.threshold_translators[threshold_type]
+        translator = self.threshold_translators.get(threshold_type)
+        if not translator:
+            raise serializers.ValidationError(
+                "Invalid threshold type: Allowed types for comparison alerts are above OR below"
+            )
+
         resolve_threshold = data.get("resolve_threshold")
         if resolve_threshold:
             data["resolve_threshold"] = translator(resolve_threshold)
@@ -514,6 +533,8 @@ class AlertRuleSerializer(CamelSnakeModelSerializer[AlertRule]):
                 )
             except (TimeoutError, MaxRetryError):
                 raise RequestTimeout
+            except ParseError:
+                raise serializers.ValidationError("Failed to parse Seer store data response")
             except forms.ValidationError as e:
                 # if we fail in create_metric_alert, then only one message is ever returned
                 raise serializers.ValidationError(e.error_list[0].message)
@@ -546,6 +567,8 @@ class AlertRuleSerializer(CamelSnakeModelSerializer[AlertRule]):
                 )
             except (TimeoutError, MaxRetryError):
                 raise RequestTimeout
+            except ParseError:
+                raise serializers.ValidationError("Failed to parse Seer store data response")
             except forms.ValidationError as e:
                 # if we fail in update_metric_alert, then only one message is ever returned
                 raise serializers.ValidationError(e.error_list[0].message)

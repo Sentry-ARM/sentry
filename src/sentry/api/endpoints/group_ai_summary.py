@@ -33,9 +33,10 @@ from rest_framework.request import Request
 
 class SummarizeIssueResponse(BaseModel):
     group_id: str
-    summary: str
-    impact: str
     headline: str
+    whats_wrong: str | None = None
+    trace: str | None = None
+    possible_cause: str | None = None
 
 
 @region_silo_endpoint
@@ -44,7 +45,6 @@ class GroupAiSummaryEndpoint(GroupEndpoint):
         "POST": ApiPublishStatus.EXPERIMENTAL,
     }
     owner = ApiOwner.ML_AI
-    private = True
     enforce_rate_limit = True
     rate_limits = {
         "POST": {
@@ -173,7 +173,7 @@ class GroupAiSummaryEndpoint(GroupEndpoint):
         if not features.has("organizations:ai-summary", group.organization, actor=request.user):
             return Response({"detail": "Feature flag not enabled"}, status=400)
 
-        cache_key = "ai-group-summary:" + str(group.id)
+        cache_key = "ai-group-summary-v2:" + str(group.id)
         if cached_summary := cache.get(cache_key):
             return Response(convert_dict_key_case(cached_summary, snake_to_camel_case), status=200)
 

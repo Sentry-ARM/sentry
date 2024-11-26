@@ -4,15 +4,14 @@ import omit from 'lodash/omit';
 
 import Breadcrumbs from 'sentry/components/breadcrumbs';
 import * as Layout from 'sentry/components/layouts/thirds';
-import {DatePageFilter} from 'sentry/components/organizations/datePageFilter';
-import {EnvironmentPageFilter} from 'sentry/components/organizations/environmentPageFilter';
-import PageFilterBar from 'sentry/components/organizations/pageFilterBar';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
 import {PageAlert, PageAlertProvider} from 'sentry/utils/performance/contexts/pageAlert';
 import {useLocation} from 'sentry/utils/useLocation';
+import useOrganization from 'sentry/utils/useOrganization';
 import useRouter from 'sentry/utils/useRouter';
 import {HeaderContainer} from 'sentry/views/insights/common/components/headerContainer';
+import {ModulePageFilterBar} from 'sentry/views/insights/common/components/modulePageFilterBar';
 import {ModulePageProviders} from 'sentry/views/insights/common/components/modulePageProviders';
 import {ReleaseComparisonSelector} from 'sentry/views/insights/common/components/releaseSelector';
 import {ToolRibbon} from 'sentry/views/insights/common/components/ribbon';
@@ -20,6 +19,9 @@ import {useModuleBreadcrumbs} from 'sentry/views/insights/common/utils/useModule
 import {SpanSamplesPanel} from 'sentry/views/insights/mobile/common/components/spanSamplesPanel';
 import {SamplesTables} from 'sentry/views/insights/mobile/common/components/tables/samplesTables';
 import {SpanOperationTable} from 'sentry/views/insights/mobile/ui/components/tables/spanOperationTable';
+import {MobileHeader} from 'sentry/views/insights/pages/mobile/mobilePageHeader';
+import {useDomainViewFilters} from 'sentry/views/insights/pages/useFilters';
+import {isModuleEnabled} from 'sentry/views/insights/pages/utils';
 import {ModuleName, SpanMetricsField} from 'sentry/views/insights/types';
 
 type Query = {
@@ -35,27 +37,44 @@ type Query = {
 
 function ScreenSummary() {
   const location = useLocation<Query>();
+  const {isInDomainView} = useDomainViewFilters();
+  const organization = useOrganization();
   const {transaction: transactionName} = location.query;
 
   const crumbs = useModuleBreadcrumbs('mobile-ui');
+  const isMobileScreensEnabled = isModuleEnabled(ModuleName.MOBILE_SCREENS, organization);
 
   return (
     <Layout.Page>
       <PageAlertProvider>
-        <Layout.Header>
-          <Layout.HeaderContent>
-            <Breadcrumbs
-              crumbs={[
-                ...crumbs,
-                {
-                  label: t('Screen Summary'),
-                },
-              ]}
-            />
-            <Layout.Title>{transactionName}</Layout.Title>
-          </Layout.HeaderContent>
-        </Layout.Header>
+        {!isInDomainView && (
+          <Layout.Header>
+            <Layout.HeaderContent>
+              <Breadcrumbs
+                crumbs={[
+                  ...crumbs,
+                  {
+                    label: t('Screen Summary'),
+                  },
+                ]}
+              />
+              <Layout.Title>{transactionName}</Layout.Title>
+            </Layout.HeaderContent>
+          </Layout.Header>
+        )}
 
+        {isInDomainView && (
+          <MobileHeader
+            hideDefaultTabs={isMobileScreensEnabled}
+            module={ModuleName.MOBILE_SCREENS}
+            headerTitle={transactionName}
+            breadcrumbs={[
+              {
+                label: t('Screen Summary'),
+              },
+            ]}
+          />
+        )}
         <Layout.Body>
           <Layout.Main fullWidth>
             <PageAlert />
@@ -83,10 +102,10 @@ export function ScreenSummaryContent() {
     <Fragment>
       <HeaderContainer>
         <ToolRibbon>
-          <PageFilterBar condensed>
-            <EnvironmentPageFilter />
-            <DatePageFilter />
-          </PageFilterBar>
+          <ModulePageFilterBar
+            moduleName={ModuleName.SCREEN_RENDERING}
+            disableProjectFilter
+          />
           <ReleaseComparisonSelector />
         </ToolRibbon>
       </HeaderContainer>

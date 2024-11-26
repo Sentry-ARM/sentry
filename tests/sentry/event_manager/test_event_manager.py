@@ -84,7 +84,7 @@ from sentry.testutils.cases import (
     TransactionTestCase,
 )
 from sentry.testutils.helpers import apply_feature_flag_on_cls, override_options
-from sentry.testutils.helpers.datetime import before_now, freeze_time, iso_format
+from sentry.testutils.helpers.datetime import before_now, freeze_time
 from sentry.testutils.performance_issues.event_generators import get_event
 from sentry.testutils.pytest.fixtures import django_db_all
 from sentry.testutils.silo import assume_test_silo_mode_of
@@ -1924,8 +1924,8 @@ class EventManagerTest(TestCase, SnubaTestCase, EventManagerTestMixin, Performan
                     }
                 },
                 spans=[],
-                timestamp=iso_format(before_now(minutes=5)),
-                start_timestamp=iso_format(before_now(minutes=5)),
+                timestamp=before_now(minutes=5).isoformat(),
+                start_timestamp=before_now(minutes=5).isoformat(),
                 type="transaction",
                 platform="python",
             )
@@ -1961,8 +1961,8 @@ class EventManagerTest(TestCase, SnubaTestCase, EventManagerTestMixin, Performan
                     }
                 },
                 spans=[],
-                timestamp=iso_format(before_now(minutes=5)),
-                start_timestamp=iso_format(before_now(minutes=5)),
+                timestamp=before_now(minutes=5).isoformat(),
+                start_timestamp=before_now(minutes=5).isoformat(),
                 type="transaction",
                 platform="python",
             )
@@ -2024,8 +2024,8 @@ class EventManagerTest(TestCase, SnubaTestCase, EventManagerTestMixin, Performan
                     }
                 },
                 spans=[],
-                timestamp=iso_format(before_now(minutes=5)),
-                start_timestamp=iso_format(before_now(minutes=5)),
+                timestamp=before_now(minutes=5).isoformat(),
+                start_timestamp=before_now(minutes=5).isoformat(),
                 type="transaction",
                 platform="python",
             )
@@ -2169,10 +2169,7 @@ class EventManagerTest(TestCase, SnubaTestCase, EventManagerTestMixin, Performan
             event1 = manager.save(self.project.id)
             event2 = Event(event1.project_id, event1.event_id, data=event1.data)
 
-            assert (
-                event1.get_hashes().hashes
-                == event2.get_hashes(load_grouping_config(grouping_config)).hashes
-            )
+            assert event1.get_hashes() == event2.get_hashes(load_grouping_config(grouping_config))
 
     @override_options({"performance.issues.all.problem-detection": 1.0})
     @override_options({"performance.issues.n_plus_one_db.problem-creation": 1.0})

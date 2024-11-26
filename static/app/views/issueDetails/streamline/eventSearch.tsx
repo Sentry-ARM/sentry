@@ -1,7 +1,6 @@
 import {useCallback, useMemo} from 'react';
 import orderBy from 'lodash/orderBy';
 
-import {useFetchIssueTags} from 'sentry/actionCreators/group';
 import {fetchTagValues} from 'sentry/actionCreators/tags';
 import {
   SearchQueryBuilder,
@@ -23,7 +22,14 @@ import useOrganization from 'sentry/utils/useOrganization';
 import usePageFilters from 'sentry/utils/usePageFilters';
 import {Dataset} from 'sentry/views/alerts/rules/metric/types';
 import {ALL_EVENTS_EXCLUDED_TAGS} from 'sentry/views/issueDetails/groupEvents';
-import {mergeAndSortTagValues} from 'sentry/views/issueDetails/utils';
+import {
+  type GroupTag,
+  useGroupTags,
+} from 'sentry/views/issueDetails/groupTags/useGroupTags';
+import {
+  mergeAndSortTagValues,
+  useHasStreamlinedUI,
+} from 'sentry/views/issueDetails/utils';
 import {makeGetIssueTagValues} from 'sentry/views/issueList/utils/getIssueTagValues';
 
 interface EventSearchProps {
@@ -36,7 +42,6 @@ interface EventSearchProps {
 }
 
 export function useEventQuery({group}: {group: Group}): string {
-  const organization = useOrganization();
   const {selection} = usePageFilters();
   const location = useLocation();
   const environments = selection.environments;
@@ -49,8 +54,7 @@ export function useEventQuery({group}: {group: Group}): string {
     eventQuery = locationQuery;
   }
 
-  const {data = []} = useFetchIssueTags({
-    orgSlug: organization.slug,
+  const {data = []} = useGroupTags({
     groupId: group.id,
     environment: environments,
   });
@@ -80,7 +84,7 @@ export function useEventQuery({group}: {group: Group}): string {
   return joinQuery(validQuery, false, true);
 }
 
-function useEventSearchFilterKeys(data) {
+function useEventSearchFilterKeys(data: GroupTag[]): TagCollection {
   const filterKeys = useMemo<TagCollection>(() => {
     const tags = [
       ...data.map(tag => ({...tag, kind: FieldKind.TAG})),
@@ -137,9 +141,9 @@ export function EventSearch({
 }: EventSearchProps) {
   const api = useApi();
   const organization = useOrganization();
+  const hasStreamlinedUI = useHasStreamlinedUI();
 
-  const {data = []} = useFetchIssueTags({
-    orgSlug: organization.slug,
+  const {data = []} = useGroupTags({
     groupId: group.id,
     environment: environments,
   });
@@ -189,9 +193,9 @@ export function EventSearch({
       filterKeys={filterKeys}
       filterKeySections={filterKeySections}
       getTagValues={getTagValues}
-      placeholder={t('Search events...')}
-      label={t('Search events')}
-      searchSource="issue_events_tab"
+      placeholder={hasStreamlinedUI ? t('Filter events\u2026') : t('Search events\u2026')}
+      label={hasStreamlinedUI ? t('Filter events\u2026') : t('Search events')}
+      searchSource={hasStreamlinedUI ? 'issue_details_header' : 'issue_events_tab'}
       className={className}
       showUnsubmittedIndicator
       {...queryBuilderProps}
