@@ -1,6 +1,7 @@
 import {useCallback, useMemo} from 'react';
 
 import {fetchSpanFieldValues} from 'sentry/actionCreators/tags';
+import {getHasTag} from 'sentry/components/events/searchBar';
 import {normalizeDateTimeParams} from 'sentry/components/organizations/pageFilters/parse';
 import {SearchQueryBuilder} from 'sentry/components/searchQueryBuilder';
 import type {CallbackSearchState} from 'sentry/components/searchQueryBuilder/types';
@@ -30,6 +31,7 @@ interface SpanSearchQueryBuilderProps {
   searchSource: string;
   datetime?: PageFilters['datetime'];
   disableLoadingTags?: boolean;
+  onBlur?: (query: string, state: CallbackSearchState) => void;
   onSearch?: (query: string, state: CallbackSearchState) => void;
   placeholder?: string;
   projects?: PageFilters['projects'];
@@ -50,15 +52,18 @@ const getFunctionTags = (supportedAggregates?: AggregationKey[]) => {
   }, {});
 };
 
-const getSpanFieldDefinition = (key: string, kind?: FieldKind) => {
-  return getFieldDefinition(key, 'span', kind);
-};
+function getSpanFieldDefinitionFunction(tags: TagCollection) {
+  return (key: string) => {
+    return getFieldDefinition(key, 'span', tags[key]?.kind);
+  };
+}
 
 export function SpanSearchQueryBuilder({
   initialQuery,
   searchSource,
   datetime,
   onSearch,
+  onBlur,
   placeholder,
   projects,
 }: SpanSearchQueryBuilderProps) {
@@ -133,8 +138,9 @@ export function SpanSearchQueryBuilder({
       placeholder={placeholderText}
       filterKeys={filterTags}
       initialQuery={initialQuery}
-      fieldDefinitionGetter={getSpanFieldDefinition}
+      fieldDefinitionGetter={getSpanFieldDefinitionFunction(filterTags)}
       onSearch={onSearch}
+      onBlur={onBlur}
       searchSource={searchSource}
       filterKeySections={filterKeySections}
       getTagValues={getSpanFilterTagValues}
@@ -148,6 +154,7 @@ export function SpanSearchQueryBuilder({
 interface EAPSpanSearchQueryBuilderProps extends SpanSearchQueryBuilderProps {
   numberTags: TagCollection;
   stringTags: TagCollection;
+  getFilterTokenWarning?: (key: string) => React.ReactNode;
   supportedAggregates?: AggregationKey[];
 }
 
@@ -155,10 +162,13 @@ export function EAPSpanSearchQueryBuilder({
   initialQuery,
   placeholder,
   onSearch,
+  onBlur,
   searchSource,
   numberTags,
   stringTags,
+  getFilterTokenWarning,
   supportedAggregates = [],
+  projects,
 }: EAPSpanSearchQueryBuilderProps) {
   const api = useApi();
   const organization = useOrganization();
@@ -170,8 +180,10 @@ export function EAPSpanSearchQueryBuilder({
     return getFunctionTags(supportedAggregates);
   }, [supportedAggregates]);
 
-  const tags = useMemo(() => {
-    return {...functionTags, ...numberTags, ...stringTags};
+  const filterTags: TagCollection = useMemo(() => {
+    const tags: TagCollection = {...functionTags, ...numberTags, ...stringTags};
+    tags.has = getHasTag({...stringTags}); // TODO: add number tags
+    return tags;
   }, [numberTags, stringTags, functionTags]);
 
   const filterKeySections = useMemo(() => {
@@ -179,7 +191,12 @@ export function EAPSpanSearchQueryBuilder({
       SPANS_FILTER_KEY_SECTIONS.flatMap(section => section.children)
     );
     return [
-      ...SPANS_FILTER_KEY_SECTIONS,
+      ...SPANS_FILTER_KEY_SECTIONS.map(section => {
+        return {
+          ...section,
+          children: section.children.filter(key => stringTags.hasOwnProperty(key)),
+        };
+      }),
       {
         value: 'custom_fields',
         label: 'Custom Tags',
@@ -202,7 +219,7 @@ export function EAPSpanSearchQueryBuilder({
           orgSlug: organization.slug,
           fieldKey: tag.key,
           search: queryString,
-          projectIds: selection.projects.map(String),
+          projectIds: (projects ?? selection.projects).map(String),
           endpointParams: normalizeDateTimeParams(selection.datetime),
           dataset: 'spans',
         });
@@ -211,16 +228,18 @@ export function EAPSpanSearchQueryBuilder({
         throw new Error(`Unable to fetch event field values: ${e}`);
       }
     },
-    [api, organization.slug, selection.projects, selection.datetime, numberTags]
+    [api, organization.slug, selection.projects, projects, selection.datetime, numberTags]
   );
 
   return (
     <SearchQueryBuilder
       placeholder={placeholderText}
-      filterKeys={tags}
+      filterKeys={filterTags}
       initialQuery={initialQuery}
-      fieldDefinitionGetter={getSpanFieldDefinition}
+      fieldDefinitionGetter={getSpanFieldDefinitionFunction(filterTags)}
       onSearch={onSearch}
+      onBlur={onBlur}
+      getFilterTokenWarning={getFilterTokenWarning}
       searchSource={searchSource}
       filterKeySections={filterKeySections}
       getTagValues={getSpanFilterTagValues}

@@ -57,11 +57,19 @@ class TaskNamespace:
         return self._producer
 
     def get(self, name: str) -> Task[Any, Any]:
+        """
+        Get a registered task by name
+
+        Raises KeyError when an unknown task is provided.
+        """
         if name not in self._registered_tasks:
             raise KeyError(f"No task registered with the name {name}. Check your imports")
         return self._registered_tasks[name]
 
     def contains(self, name: str) -> bool:
+        """
+        Check if a task name has been registered
+        """
         return name in self._registered_tasks
 
     def register(
@@ -71,19 +79,50 @@ class TaskNamespace:
         retry: Retry | None = None,
         expires: int | datetime.timedelta | None = None,
         processing_deadline_duration: int | datetime.timedelta | None = None,
+        at_most_once: bool = False,
+        wait_for_delivery: bool = False,
     ) -> Callable[[Callable[P, R]], Task[P, R]]:
-        """register a task, used as a decorator"""
+        """
+        Register a task.
+
+        Applied as a decorator to functions to enable them to be run
+        asynchronously via taskworkers.
+
+        Parameters
+        ----------
+
+        name: str
+            The name of the task. This is serialized and must be stable across deploys.
+        retry: Retry | None
+            The retry policy for the task. If none and at_most_once is not enabled
+            the Task namespace default retry policy will be used.
+        expires: int | datetime.timedelta
+            The number of seconds a task activation is valid for. After this
+            duration the activation will be discarded and not executed.
+        at_most_once : bool
+            Enable at-most-once execution. Tasks with `at_most_once` cannot
+            define retry policies, and use a worker side idempotency key to
+            prevent processing deadline based retries.
+        wait_for_delivery: bool
+            If true, the task will wait for the delivery report to be received
+            before returning.
+        """
 
         def wrapped(func: Callable[P, R]) -> Task[P, R]:
+            task_retry = retry
+            if not at_most_once:
+                task_retry = retry or self.default_retry
             task = Task(
                 name=name,
                 func=func,
                 namespace=self,
-                retry=retry or self.default_retry,
+                retry=task_retry,
                 expires=expires or self.default_expires,
                 processing_deadline_duration=(
                     processing_deadline_duration or self.default_processing_deadline_duration
                 ),
+                at_most_once=at_most_once,
+                wait_for_delivery=wait_for_delivery,
             )
             # TODO(taskworker) tasks should be registered into the registry
             # so that we can ensure task names are globally unique
@@ -92,13 +131,18 @@ class TaskNamespace:
 
         return wrapped
 
-    def send_task(self, activation: TaskActivation) -> None:
+    def send_task(self, activation: TaskActivation, wait_for_delivery: bool = False) -> None:
         metrics.incr("taskworker.registry.send_task", tags={"namespace": activation.namespace})
-        # TODO(taskworker) producer callback handling
-        self.producer.produce(
+
+        produce_future = self.producer.produce(
             ArroyoTopic(name=self.topic.value),
             KafkaPayload(key=None, value=activation.SerializeToString(), headers=[]),
         )
+        if wait_for_delivery:
+            try:
+                produce_future.result(timeout=10)
+            except Exception:
+                logger.exception("Failed to wait for delivery")
 
 
 class TaskRegistry:

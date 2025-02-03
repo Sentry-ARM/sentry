@@ -108,7 +108,6 @@ class GroupStatsMixin:
 
     CUSTOM_SEGMENTS = 29  # for 30 segments use 1/29th intervals
     CUSTOM_SEGMENTS_12H = 35  # for 12h 36 segments, otherwise 15-16-17 bars is too few
-    CUSTOM_ROLLUP_6H = timedelta(hours=6).total_seconds()  # rollups should be increments of 6hs
 
     @abstractmethod
     def query_tsdb(
@@ -279,9 +278,7 @@ class StreamGroupSerializerSnuba(GroupSerializerSnuba, GroupStatsMixin):
                 attrs = {item: seen_stats.get(item, {}) for item in item_list}
             else:
                 attrs = {item: {} for item in item_list}
-            if len(item_list) > 0 and features.has(
-                "organizations:issue-stream-performance", item_list[0].project.organization
-            ):
+            if len(item_list) > 0:
                 unhandled_stats = self._get_group_snuba_stats(item_list, seen_stats)
 
                 if unhandled_stats is not None:

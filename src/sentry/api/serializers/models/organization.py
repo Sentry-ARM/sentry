@@ -30,7 +30,6 @@ from sentry.auth.access import Access
 from sentry.auth.services.auth import RpcOrganizationAuthConfig, auth_service
 from sentry.constants import (
     ACCOUNT_RATE_LIMIT_DEFAULT,
-    AI_SUGGESTED_SOLUTION,
     ALERTS_MEMBER_WRITE_DEFAULT,
     ATTACHMENTS_ROLE_DEFAULT,
     DATA_CONSENT_DEFAULT,
@@ -53,6 +52,7 @@ from sentry.constants import (
     SAMPLING_MODE_DEFAULT,
     SCRAPE_JAVASCRIPT_DEFAULT,
     SENSITIVE_FIELDS_DEFAULT,
+    STREAMLINE_UI_ONLY,
     TARGET_SAMPLE_RATE_DEFAULT,
     UPTIME_AUTODETECTION,
     ObjectStatus,
@@ -482,7 +482,6 @@ class DetailedOrganizationSerializerResponse(_DetailedOrganizationSerializerResp
     pendingAccessRequests: int
     onboardingTasks: list[OnboardingTasksSerializerResponse]
     codecovAccess: bool
-    aiSuggestedSolution: bool
     hideAiFeatures: bool
     githubPRBot: bool
     githubOpenPRBot: bool
@@ -496,6 +495,7 @@ class DetailedOrganizationSerializerResponse(_DetailedOrganizationSerializerResp
     metricsActivateLastForGauges: bool
     requiresSso: bool
     rollbackEnabled: bool
+    streamlineOnly: bool | None
 
 
 class DetailedOrganizationSerializer(OrganizationSerializer):
@@ -599,9 +599,6 @@ class DetailedOrganizationSerializer(OrganizationSerializer):
                 ),
                 "relayPiiConfig": str(obj.get_option("sentry:relay_pii_config") or "") or None,
                 "codecovAccess": bool(obj.flags.codecov_access),
-                "aiSuggestedSolution": bool(
-                    obj.get_option("sentry:ai_suggested_solution", AI_SUGGESTED_SOLUTION)
-                ),
                 "hideAiFeatures": bool(
                     obj.get_option("sentry:hide_ai_features", HIDE_AI_FEATURES_DEFAULT)
                 ),
@@ -614,7 +611,9 @@ class DetailedOrganizationSerializer(OrganizationSerializer):
                 "githubNudgeInvite": bool(
                     obj.get_option("sentry:github_nudge_invite", GITHUB_COMMENT_BOT_DEFAULT)
                 ),
-                "genAIConsent": bool(obj.get_option("sentry:gen_ai_consent", DATA_CONSENT_DEFAULT)),
+                "genAIConsent": bool(
+                    obj.get_option("sentry:gen_ai_consent_v2024_11_14", DATA_CONSENT_DEFAULT)
+                ),
                 "aggregatedDataConsent": bool(
                     obj.get_option("sentry:aggregated_data_consent", DATA_CONSENT_DEFAULT)
                 ),
@@ -638,6 +637,7 @@ class DetailedOrganizationSerializer(OrganizationSerializer):
                 "rollbackEnabled": bool(
                     obj.get_option("sentry:rollback_enabled", ROLLBACK_ENABLED_DEFAULT)
                 ),
+                "streamlineOnly": obj.get_option("sentry:streamline_ui_only", STREAMLINE_UI_ONLY),
             }
         )
 
@@ -698,7 +698,13 @@ class DetailedOrganizationSerializer(OrganizationSerializer):
         if sample_rate is not None:
             context["planSampleRate"] = sample_rate
 
-        desired_sample_rate, _ = get_org_sample_rate(org_id=obj.id, default_sample_rate=sample_rate)
+        if is_project_mode_sampling(obj):
+            desired_sample_rate = None
+        else:
+            desired_sample_rate, _ = get_org_sample_rate(
+                org_id=obj.id, default_sample_rate=sample_rate
+            )
+
         if desired_sample_rate is not None:
             context["desiredSampleRate"] = desired_sample_rate
 
@@ -714,6 +720,7 @@ class DetailedOrganizationSerializer(OrganizationSerializer):
         "metricsActivateLastForGauges",
         "quota",
         "rollbackEnabled",
+        "streamlineOnly",
     ]
 )
 class DetailedOrganizationSerializerWithProjectsAndTeamsResponse(

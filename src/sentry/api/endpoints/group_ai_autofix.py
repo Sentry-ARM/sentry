@@ -7,7 +7,7 @@ from typing import Any
 import orjson
 import requests
 from django.conf import settings
-from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
+from django.contrib.auth.models import AnonymousUser
 from rest_framework.response import Response
 
 from sentry import eventstore, features
@@ -23,6 +23,7 @@ from sentry.seer.signed_seer_api import get_seer_salted_url, sign_with_seer_secr
 from sentry.tasks.autofix import check_autofix_status
 from sentry.types.ratelimit import RateLimit, RateLimitCategory
 from sentry.users.models.user import User
+from sentry.users.services.user.model import RpcUser
 from sentry.users.services.user.service import user_service
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ class GroupAutofixEndpoint(GroupEndpoint):
     }
 
     def _get_serialized_event(
-        self, event_id: str, group: Group, user: AbstractBaseUser | AnonymousUser
+        self, event_id: str, group: Group, user: User | RpcUser | AnonymousUser
     ) -> dict[str, Any] | None:
         event = eventstore.backend.get_event_by_id(group.project.id, event_id, group_id=group.id)
 
@@ -111,11 +112,6 @@ class GroupAutofixEndpoint(GroupEndpoint):
                     else None
                 ),
                 "options": {
-                    "disable_codebase_indexing": features.has(
-                        "organizations:autofix-disable-codebase-indexing",
-                        group.organization,
-                        actor=user,
-                    ),
                     "comment_on_pr_with_url": pr_to_comment_on_url,
                 },
             },
@@ -161,9 +157,8 @@ class GroupAutofixEndpoint(GroupEndpoint):
         created_at = datetime.now().isoformat()
 
         if not (
-            features.has("projects:ai-autofix", group.project)
-            or features.has("organizations:autofix", group.organization)
-            or group.organization.get_option("sentry:gen_ai_consent", False)
+            features.has("organizations:gen-ai-features", group.organization, actor=request.user)
+            and group.organization.get_option("sentry:gen_ai_consent_v2024_11_14", False)
         ):
             return self._respond_with_error("AI Autofix is not enabled for this project.", 403)
 

@@ -2,9 +2,6 @@ import {Fragment} from 'react';
 import styled from '@emotion/styled';
 
 import Feature from 'sentry/components/acl/feature';
-import {Breadcrumbs} from 'sentry/components/breadcrumbs';
-import ButtonBar from 'sentry/components/buttonBar';
-import FeedbackWidgetButton from 'sentry/components/feedback/widget/feedbackWidgetButton';
 import * as Layout from 'sentry/components/layouts/thirds';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
@@ -29,7 +26,6 @@ import {
   useSpansIndexed,
 } from 'sentry/views/insights/common/queries/useDiscover';
 import {useSpanMetricsSeries} from 'sentry/views/insights/common/queries/useDiscoverSeries';
-import {useModuleBreadcrumbs} from 'sentry/views/insights/common/utils/useModuleBreadcrumbs';
 import {QueryParameterNames} from 'sentry/views/insights/common/views/queryParameters';
 import {
   DataTitles,
@@ -42,7 +38,6 @@ import {isAValidSort} from 'sentry/views/insights/database/components/tables/que
 import {QueryTransactionsTable} from 'sentry/views/insights/database/components/tables/queryTransactionsTable';
 import {DEFAULT_DURATION_AGGREGATE} from 'sentry/views/insights/database/settings';
 import {BackendHeader} from 'sentry/views/insights/pages/backend/backendPageHeader';
-import {useDomainViewFilters} from 'sentry/views/insights/pages/useFilters';
 import type {SpanMetricsQueryFilters} from 'sentry/views/insights/types';
 import {
   ModuleName,
@@ -51,6 +46,8 @@ import {
   SpanMetricsField,
 } from 'sentry/views/insights/types';
 import {TraceViewSources} from 'sentry/views/performance/newTraceDetails/traceHeader/breadcrumbs';
+
+import {useSamplesDrawer} from '../../common/utils/useSamplesDrawer';
 
 type Query = {
   transaction: string;
@@ -62,13 +59,11 @@ type Query = {
 type Props = RouteComponentProps<Query, {groupId: string}>;
 
 export function DatabaseSpanSummaryPage({params}: Props) {
-  const {isInDomainView} = useDomainViewFilters();
   const location = useLocation<Query>();
 
   const selectedAggregate = DEFAULT_DURATION_AGGREGATE;
 
   const {groupId} = params;
-  const {transaction, transactionMethod} = location.query;
 
   const filters: SpanMetricsQueryFilters = {
     'span.group': groupId,
@@ -153,6 +148,18 @@ export function DatabaseSpanSummaryPage({params}: Props) {
     [SpanMetricsField.SPAN_GROUP]: string;
   };
 
+  useSamplesDrawer({
+    Component: (
+      <SampleList
+        groupId={span[SpanMetricsField.SPAN_GROUP]}
+        moduleName={ModuleName.DB}
+        referrer={TraceViewSources.QUERIES_MODULE}
+      />
+    ),
+    moduleName: ModuleName.DB,
+    requiredParams: ['transaction'],
+  });
+
   const {
     isPending: isThroughputDataLoading,
     data: throughputData,
@@ -181,42 +188,17 @@ export function DatabaseSpanSummaryPage({params}: Props) {
 
   useSynchronizeCharts(2, !isThroughputDataLoading && !isDurationDataLoading);
 
-  const crumbs = useModuleBreadcrumbs('db');
-
   return (
     <Fragment>
-      {!isInDomainView && (
-        <Layout.Header>
-          <Layout.HeaderContent>
-            <Breadcrumbs
-              crumbs={[
-                ...crumbs,
-                {
-                  label: t('Query Summary'),
-                },
-              ]}
-            />
-            <Layout.Title>{t('Query Summary')}</Layout.Title>
-          </Layout.HeaderContent>
-          <Layout.HeaderActions>
-            <ButtonBar gap={1}>
-              <FeedbackWidgetButton />
-            </ButtonBar>
-          </Layout.HeaderActions>
-        </Layout.Header>
-      )}
-
-      {isInDomainView && (
-        <BackendHeader
-          headerTitle={t('Query Summary')}
-          breadcrumbs={[
-            {
-              label: t('Query Summary'),
-            },
-          ]}
-          module={ModuleName.DB}
-        />
-      )}
+      <BackendHeader
+        headerTitle={t('Query Summary')}
+        breadcrumbs={[
+          {
+            label: t('Query Summary'),
+          },
+        ]}
+        module={ModuleName.DB}
+      />
 
       <ModuleBodyUpsellHook moduleName={ModuleName.DB}>
         <Layout.Body>
@@ -289,7 +271,6 @@ export function DatabaseSpanSummaryPage({params}: Props) {
                     series={throughputData['spm()']}
                     isLoading={isThroughputDataLoading}
                     error={throughputError}
-                    filters={filters}
                   />
 
                   <DurationChart
@@ -300,7 +281,6 @@ export function DatabaseSpanSummaryPage({params}: Props) {
                     ]}
                     isLoading={isDurationDataLoading}
                     error={durationError}
-                    filters={filters}
                   />
                 </ChartContainer>
               </ModuleLayout.Full>
@@ -319,14 +299,6 @@ export function DatabaseSpanSummaryPage({params}: Props) {
                 </ModuleLayout.Full>
               )}
             </ModuleLayout.Layout>
-
-            <SampleList
-              groupId={span[SpanMetricsField.SPAN_GROUP]}
-              moduleName={ModuleName.DB}
-              transactionName={transaction}
-              transactionMethod={transactionMethod}
-              referrer={TraceViewSources.QUERIES_MODULE}
-            />
           </Layout.Main>
         </Layout.Body>
       </ModuleBodyUpsellHook>
@@ -358,11 +330,7 @@ const DescriptionContainer = styled(ModuleLayout.Full)`
 
 function PageWithProviders(props) {
   return (
-    <ModulePageProviders
-      moduleName="db"
-      pageTitle={t('Query Summary')}
-      features="insights-initial-modules"
-    >
+    <ModulePageProviders moduleName="db" pageTitle={t('Query Summary')}>
       <DatabaseSpanSummaryPage {...props} />
     </ModulePageProviders>
   );

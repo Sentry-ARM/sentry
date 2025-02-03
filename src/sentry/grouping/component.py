@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+from collections import Counter
 from collections.abc import Generator, Iterator, Sequence
-from typing import Any
+from typing import Any, Self
 
 from sentry.grouping.utils import hash_from_values
-
-DEFAULT_HINTS = {"salt": "a static salt"}
 
 # When a component ID appears here it has a human readable name which also
 # makes it a major component.  A major component is described as such for
@@ -23,39 +23,44 @@ KNOWN_MAJOR_COMPONENT_NAMES = {
 }
 
 
-def _calculate_contributes(values: Sequence[str | int | BaseGroupingComponent]) -> bool:
+def _calculate_contributes[ValuesType](values: Sequence[ValuesType]) -> bool:
     for value in values or ():
         if not isinstance(value, BaseGroupingComponent) or value.contributes:
             return True
     return False
 
 
-class BaseGroupingComponent:
-    """A grouping component is a recursive structure that is flattened
-    into components to make a hash for grouping purposes.
+class BaseGroupingComponent[ValuesType: str | int | BaseGroupingComponent[Any]](ABC):
+    """
+    A grouping component is a node in a tree describing the event data (exceptions, stacktraces,
+    messages, etc.) which can contribute to grouping. Each node's children, stored in the `values`
+    attribute, are either other grouping components or primitives representing the actual data.
+
+    For example, an exception component might have type, value, and stacktrace components as
+    children, and the type component might have the string "KeyError" as its child.
     """
 
-    id: str = "default"
     hint: str | None = None
     contributes: bool = False
-    values: Sequence[str | int | BaseGroupingComponent]
+    values: Sequence[ValuesType]
 
     def __init__(
         self,
-        id: str,
         hint: str | None = None,
         contributes: bool | None = None,
-        values: Sequence[str | int | BaseGroupingComponent] | None = None,
-        variant_provider: bool = False,
+        values: Sequence[ValuesType] | None = None,
     ):
-        self.id = id
-        self.variant_provider = variant_provider
-
+        # Use `upate` to set attribute values because it ensures `contributes` is set (if
+        # `contributes` is not provided, `update` will derive it from the `values` value)
         self.update(
-            hint=hint or DEFAULT_HINTS.get(self.id),
+            hint=hint,
             contributes=contributes,
             values=values or [],
         )
+
+    @property
+    @abstractmethod
+    def id(self) -> str: ...
 
     @property
     def name(self) -> str | None:
@@ -73,7 +78,7 @@ class BaseGroupingComponent:
         paths = []
 
         def _walk_components(
-            component: BaseGroupingComponent, current_path: list[str | None]
+            component: BaseGroupingComponent[Any], current_path: list[str | None]
         ) -> None:
             # Keep track of the names of the nodes from the root of the component tree to here
             current_path.append(component.name)
@@ -101,13 +106,13 @@ class BaseGroupingComponent:
 
     def get_subcomponent(
         self, id: str, only_contributing: bool = False
-    ) -> str | int | BaseGroupingComponent | None:
+    ) -> str | int | BaseGroupingComponent[Any] | None:
         """Looks up a subcomponent by the id and returns the first or `None`."""
         return next(self.iter_subcomponents(id=id, only_contributing=only_contributing), None)
 
     def iter_subcomponents(
         self, id: str, recursive: bool = False, only_contributing: bool = False
-    ) -> Iterator[str | int | BaseGroupingComponent | None]:
+    ) -> Iterator[str | int | BaseGroupingComponent[Any] | None]:
         """Finds all subcomponents matching an id, optionally recursively."""
         for value in self.values:
             if isinstance(value, BaseGroupingComponent):
@@ -125,7 +130,7 @@ class BaseGroupingComponent:
         self,
         hint: str | None = None,
         contributes: bool | None = None,
-        values: Sequence[str | int | BaseGroupingComponent] | None = None,
+        values: Sequence[ValuesType] | None = None,
     ) -> None:
         """Updates an already existing component with new values."""
         if hint is not None:
@@ -137,16 +142,17 @@ class BaseGroupingComponent:
         if contributes is not None:
             self.contributes = contributes
 
-    def shallow_copy(self) -> BaseGroupingComponent:
+    def shallow_copy(self) -> Self:
         """Creates a shallow copy."""
-        rv = object.__new__(self.__class__)
-        rv.__dict__.update(self.__dict__)
-        rv.values = list(self.values)
-        return rv
+        copy = object.__new__(self.__class__)
+        copy.__dict__.update(self.__dict__)
+        copy.values = list(self.values)
+        return copy
 
-    def iter_values(self) -> Generator[str | int | BaseGroupingComponent]:
-        """Recursively walks the component and flattens it into a list of
-        values.
+    def iter_values(self) -> Generator[str | int]:
+        """
+        Recursively walks the component tree, gathering literal values from contributing
+        branches into a flat list.
         """
         if self.contributes:
             for value in self.values:
@@ -183,3 +189,248 @@ class BaseGroupingComponent:
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.id!r}, hint={self.hint!r}, contributes={self.contributes!r}, values={self.values!r})"
+
+
+# NOTE: In all of the classes below, the type(s) passed to `BaseGroupingComponent` represent
+# the type(s) which can appear in the `values` attribute
+
+
+# Error-related inner components
+
+
+class ContextLineGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "context-line"
+
+
+class ErrorTypeGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "type"
+
+
+class ErrorValueGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "value"
+
+
+class FilenameGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "filename"
+
+
+class FunctionGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "function"
+
+
+class LineNumberGroupingComponent(BaseGroupingComponent[int]):
+    id: str = "lineno"
+
+
+class ModuleGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "module"
+
+
+class NSErrorGroupingComponent(BaseGroupingComponent[str | int]):
+    id: str = "ns-error"
+
+
+class SymbolGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "symbol"
+
+
+FrameGroupingComponentChildren = (
+    ContextLineGroupingComponent
+    | FilenameGroupingComponent
+    | FunctionGroupingComponent
+    | LineNumberGroupingComponent  # only in legacy config
+    | ModuleGroupingComponent
+    | SymbolGroupingComponent  # only in legacy config
+)
+
+
+class FrameGroupingComponent(BaseGroupingComponent[FrameGroupingComponentChildren]):
+    id: str = "frame"
+    in_app: bool
+
+    def __init__(
+        self,
+        values: Sequence[FrameGroupingComponentChildren],
+        in_app: bool,
+        hint: str | None = None,  # only passed in legacy
+        contributes: bool | None = None,  # only passed in legacy
+    ):
+        super().__init__(hint=hint, contributes=contributes, values=values)
+        self.in_app = in_app
+
+
+# Security-related inner components
+
+
+class HostnameGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "hostname"
+
+
+class SaltGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "salt"
+    hint: str = "a static salt"
+
+
+class ViolationGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "violation"
+
+
+class URIGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "uri"
+
+
+# Top-level components
+
+
+class MessageGroupingComponent(BaseGroupingComponent[str]):
+    id: str = "message"
+
+
+class StacktraceGroupingComponent(BaseGroupingComponent[FrameGroupingComponent]):
+    id: str = "stacktrace"
+    frame_counts: Counter[str]
+
+    def __init__(
+        self,
+        values: Sequence[FrameGroupingComponent] | None = None,
+        hint: str | None = None,
+        contributes: bool | None = None,
+        frame_counts: Counter[str] | None = None,
+    ):
+        super().__init__(hint=hint, contributes=contributes, values=values)
+        self.frame_counts = frame_counts or Counter()
+
+
+ExceptionGroupingComponentChildren = (
+    ErrorTypeGroupingComponent
+    | ErrorValueGroupingComponent
+    | NSErrorGroupingComponent
+    | StacktraceGroupingComponent
+)
+
+
+class ExceptionGroupingComponent(BaseGroupingComponent[ExceptionGroupingComponentChildren]):
+    id: str = "exception"
+    frame_counts: Counter[str]
+
+    def __init__(
+        self,
+        values: Sequence[ExceptionGroupingComponentChildren] | None = None,
+        hint: str | None = None,
+        contributes: bool | None = None,
+        frame_counts: Counter[str] | None = None,
+    ):
+        super().__init__(hint=hint, contributes=contributes, values=values)
+        self.frame_counts = frame_counts or Counter()
+
+
+class ChainedExceptionGroupingComponent(BaseGroupingComponent[ExceptionGroupingComponent]):
+    id: str = "chained-exception"
+    frame_counts: Counter[str]
+
+    def __init__(
+        self,
+        values: Sequence[ExceptionGroupingComponent] | None = None,
+        hint: str | None = None,
+        contributes: bool | None = None,
+        frame_counts: Counter[str] | None = None,
+    ):
+        super().__init__(hint=hint, contributes=contributes, values=values)
+        self.frame_counts = frame_counts or Counter()
+
+
+class ThreadsGroupingComponent(BaseGroupingComponent[StacktraceGroupingComponent]):
+    id: str = "threads"
+    frame_counts: Counter[str]
+
+    def __init__(
+        self,
+        values: Sequence[StacktraceGroupingComponent] | None = None,
+        hint: str | None = None,
+        contributes: bool | None = None,
+        frame_counts: Counter[str] | None = None,
+    ):
+        super().__init__(hint=hint, contributes=contributes, values=values)
+        self.frame_counts = frame_counts or Counter()
+
+
+class CSPGroupingComponent(
+    BaseGroupingComponent[SaltGroupingComponent | ViolationGroupingComponent | URIGroupingComponent]
+):
+    id: str = "csp"
+
+
+class ExpectCTGroupingComponent(
+    BaseGroupingComponent[HostnameGroupingComponent | SaltGroupingComponent]
+):
+    id: str = "expect-ct"
+
+
+class ExpectStapleGroupingComponent(
+    BaseGroupingComponent[HostnameGroupingComponent | SaltGroupingComponent]
+):
+    id: str = "expect-staple"
+
+
+class HPKPGroupingComponent(
+    BaseGroupingComponent[HostnameGroupingComponent | SaltGroupingComponent]
+):
+    id: str = "hpkp"
+
+
+class TemplateGroupingComponent(
+    BaseGroupingComponent[ContextLineGroupingComponent | FilenameGroupingComponent]
+):
+    id: str = "template"
+
+
+# Wrapper components used to link component trees to variants
+
+
+class DefaultGroupingComponent(
+    BaseGroupingComponent[
+        CSPGroupingComponent
+        | ExpectCTGroupingComponent
+        | ExpectStapleGroupingComponent
+        | HPKPGroupingComponent
+        | MessageGroupingComponent
+        | TemplateGroupingComponent
+    ]
+):
+    id: str = "default"
+
+
+class AppGroupingComponent(
+    BaseGroupingComponent[
+        ChainedExceptionGroupingComponent
+        | ExceptionGroupingComponent
+        | StacktraceGroupingComponent
+        | ThreadsGroupingComponent
+    ]
+):
+    id: str = "app"
+
+
+class SystemGroupingComponent(
+    BaseGroupingComponent[
+        ChainedExceptionGroupingComponent
+        | ExceptionGroupingComponent
+        | StacktraceGroupingComponent
+        | ThreadsGroupingComponent
+    ]
+):
+    id: str = "system"
+
+
+ContributingComponent = (
+    ChainedExceptionGroupingComponent
+    | ExceptionGroupingComponent
+    | StacktraceGroupingComponent
+    | ThreadsGroupingComponent
+    | CSPGroupingComponent
+    | ExpectCTGroupingComponent
+    | ExpectStapleGroupingComponent
+    | HPKPGroupingComponent
+    | MessageGroupingComponent
+    | TemplateGroupingComponent
+)

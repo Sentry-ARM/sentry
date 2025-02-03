@@ -9,8 +9,8 @@ from django.utils import timezone
 from django.utils.functional import cached_property
 
 from sentry.eventstore.models import Event
-from sentry.incidents.models.alert_rule import AlertRule, AlertRuleMonitorTypeInt
-from sentry.incidents.models.incident import IncidentActivityType
+from sentry.grouping.grouptype import ErrorGroupType
+from sentry.incidents.models.alert_rule import AlertRule
 from sentry.integrations.models.integration import Integration
 from sentry.integrations.models.organization_integration import OrganizationIntegration
 from sentry.models.activity import Activity
@@ -26,8 +26,9 @@ from sentry.models.team import Team
 from sentry.monitors.models import Monitor, MonitorType, ScheduleType
 from sentry.organizations.services.organization import RpcOrganization
 from sentry.silo.base import SiloMode
+from sentry.tempest.models import TempestCredentials
 from sentry.testutils.factories import Factories
-from sentry.testutils.helpers.datetime import before_now, iso_format
+from sentry.testutils.helpers.datetime import before_now
 from sentry.testutils.silo import assume_test_silo_mode
 
 # XXX(dcramer): this is a compatibility layer to transition to pytest-based fixtures
@@ -44,7 +45,8 @@ from sentry.uptime.models import (
 from sentry.users.models.identity import Identity, IdentityProvider
 from sentry.users.models.user import User
 from sentry.users.services.user import RpcUser
-from sentry.workflow_engine.models import DataSource, Detector, Workflow
+from sentry.workflow_engine.models import DataSource, Detector, DetectorState, Workflow
+from sentry.workflow_engine.models.data_condition import Condition
 from sentry.workflow_engine.types import DetectorPriorityLevel
 
 
@@ -59,7 +61,12 @@ class Fixtures:
 
     @cached_property
     def user(self) -> User:
-        return self.create_user("admin@localhost", is_superuser=True, is_staff=True)
+        return self.create_user(
+            "admin@localhost",
+            is_superuser=True,
+            is_staff=True,
+            is_sentry_app=False,
+        )
 
     @cached_property
     def organization(self):
@@ -101,7 +108,7 @@ class Fixtures:
             data={
                 "event_id": "a" * 32,
                 "message": "\u3053\u3093\u306b\u3061\u306f",
-                "timestamp": iso_format(before_now(seconds=1)),
+                "timestamp": before_now(seconds=1).isoformat(),
             },
             project_id=self.project.id,
         )
@@ -126,7 +133,7 @@ class Fixtures:
             external_id="github:1",
             metadata={
                 "access_token": "xxxxx-xxxxxxxxx-xxxxxxxxxx-xxxxxxxxxxxx",
-                "expires_at": iso_format(timezone.now() + timedelta(days=14)),
+                "expires_at": (timezone.now() + timedelta(days=14)).isoformat(),
             },
         )
         integration.add_organization(self.organization, self.user)
@@ -183,36 +190,27 @@ class Fixtures:
     def create_project_bookmark(self, project=None, *args, **kwargs):
         if project is None:
             project = self.project
-        return Factories.create_project_bookmark(project=project, *args, **kwargs)
+        return Factories.create_project_bookmark(project, *args, **kwargs)
 
     def create_project_key(self, project=None, *args, **kwargs):
         if project is None:
             project = self.project
-        return Factories.create_project_key(project=project, *args, **kwargs)
+        return Factories.create_project_key(project, *args, **kwargs)
 
     def create_project_rule(self, project=None, *args, **kwargs) -> Rule:
         if project is None:
             project = self.project
         return Factories.create_project_rule(project, *args, **kwargs)
 
-    def create_slack_project_rule(
-        self, project=None, integration_id=None, channel_id=None, channel_name=None, *args, **kwargs
-    ):
+    def create_slack_project_rule(self, project=None, *args, **kwargs):
         if project is None:
             project = self.project
-        return Factories.create_slack_project_rule(
-            project,
-            integration_id=integration_id,
-            channel_id=channel_id,
-            channel_name=channel_name,
-            *args,
-            **kwargs,
-        )
+        return Factories.create_slack_project_rule(project, *args, **kwargs)
 
-    def create_release(self, project=None, user=None, *args, **kwargs):
+    def create_release(self, project=None, *args, **kwargs):
         if project is None:
             project = self.project
-        return Factories.create_release(project=project, user=user, *args, **kwargs)
+        return Factories.create_release(project, *args, **kwargs)
 
     def create_group_release(self, project: Project | None = None, *args, **kwargs) -> GroupRelease:
         if project is None:
@@ -249,7 +247,7 @@ class Fixtures:
     def create_repo(self, project=None, *args, **kwargs):
         if project is None:
             project = self.project
-        return Factories.create_repo(project=project, *args, **kwargs)
+        return Factories.create_repo(project, *args, **kwargs)
 
     def create_commit(self, *args, **kwargs):
         return Factories.create_commit(*args, **kwargs)
@@ -277,7 +275,7 @@ class Fixtures:
         user: User | None = None,
         provider: str | None = None,
         uid: str | None = None,
-        extra_data: Mapping[str, Any] | None = None,
+        extra_data: dict[str, Any] | None = None,
     ):
         if not user:
             user = self.user
@@ -288,10 +286,13 @@ class Fixtures:
     def store_event(self, *args, **kwargs) -> Event:
         return Factories.store_event(*args, **kwargs)
 
+    def create_tempest_credentials(self, project: Project, *args, **kwargs) -> TempestCredentials:
+        return Factories.create_tempest_credentials(project, *args, **kwargs)
+
     def create_group(self, project=None, *args, **kwargs):
         if project is None:
             project = self.project
-        return Factories.create_group(project=project, *args, **kwargs)
+        return Factories.create_group(project, *args, **kwargs)
 
     def create_file(self, **kwargs):
         return Factories.create_file(**kwargs)
@@ -302,12 +303,12 @@ class Fixtures:
     def create_event_attachment(self, event=None, *args, **kwargs):
         if event is None:
             event = self.event
-        return Factories.create_event_attachment(event=event, *args, **kwargs)
+        return Factories.create_event_attachment(event, *args, **kwargs)
 
-    def create_dif_file(self, project=None, *args, **kwargs):
+    def create_dif_file(self, project: Project | None = None, *args, **kwargs):
         if project is None:
             project = self.project
-        return Factories.create_dif_file(project=project, *args, **kwargs)
+        return Factories.create_dif_file(project, *args, **kwargs)
 
     def create_dif_from_path(self, project=None, *args, **kwargs):
         if project is None:
@@ -371,23 +372,16 @@ class Fixtures:
     def create_integration_external_project(self, *args, **kwargs):
         return Factories.create_integration_external_project(*args, **kwargs)
 
-    def create_incident(self, organization=None, projects=None, subscription=None, *args, **kwargs):
+    def create_incident(self, organization=None, projects=None, *args, **kwargs):
         if not organization:
             organization = self.organization
         if projects is None:
             projects = [self.project]
 
-        return Factories.create_incident(
-            organization=organization, projects=projects, subscription=subscription, *args, **kwargs
-        )
+        return Factories.create_incident(organization, projects, *args, **kwargs)
 
-    def create_incident_activity(self, incident, *args, **kwargs):
-        return Factories.create_incident_activity(incident=incident, *args, **kwargs)
-
-    def create_incident_comment(self, incident, *args, **kwargs):
-        return self.create_incident_activity(
-            incident, type=IncidentActivityType.COMMENT.value, *args, **kwargs
-        )
+    def create_incident_activity(self, *args, **kwargs):
+        return Factories.create_incident_activity(*args, **kwargs)
 
     def create_incident_trigger(self, incident, alert_rule_trigger, status):
         return Factories.create_incident_trigger(incident, alert_rule_trigger, status=status)
@@ -398,40 +392,6 @@ class Fixtures:
         if projects is None:
             projects = [self.project]
         return Factories.create_alert_rule(organization, projects, *args, **kwargs)
-
-    def create_alert_rule_activation(
-        self,
-        alert_rule=None,
-        query_subscriptions=None,
-        project=None,
-        monitor_type=AlertRuleMonitorTypeInt.ACTIVATED,
-        activator=None,
-        activation_condition=None,
-        *args,
-        **kwargs,
-    ):
-        if not alert_rule:
-            alert_rule = self.create_alert_rule(
-                monitor_type=monitor_type,
-            )
-        if not query_subscriptions:
-            projects = [project] if project else [self.project]
-            # subscribing an activated alert rule will create an activation
-            query_subscriptions = alert_rule.subscribe_projects(
-                projects=projects,
-                monitor_type=monitor_type,
-                activation_condition=activation_condition,
-                activator=activator,
-            )
-
-        created_activations = []
-        for sub in query_subscriptions:
-            created_activations.append(
-                Factories.create_alert_rule_activation(
-                    alert_rule=alert_rule, query_subscription=sub, *args, **kwargs
-                )
-            )
-        return created_activations
 
     def create_alert_rule_trigger(self, alert_rule=None, *args, **kwargs):
         if not alert_rule:
@@ -622,9 +582,6 @@ class Fixtures:
     def create_dashboard_widget_query(self, *args, **kwargs):
         return Factories.create_dashboard_widget_query(*args, **kwargs)
 
-    def create_workflow_action(self, *args, **kwargs) -> Workflow:
-        return Factories.create_workflow_action(*args, **kwargs)
-
     def create_workflow(self, *args, **kwargs) -> Workflow:
         return Factories.create_workflow(*args, **kwargs)
 
@@ -633,28 +590,38 @@ class Fixtures:
 
     def create_data_condition(
         self,
-        condition="eq",
         comparison="10",
-        type="",
+        type=Condition.EQUAL,
         condition_result=None,
         condition_group=None,
+        **kwargs,
     ):
         if condition_result is None:
             condition_result = str(DetectorPriorityLevel.HIGH.value)
         if condition_group is None:
             condition_group = self.create_data_condition_group()
+
         return Factories.create_data_condition(
-            condition=condition,
             comparison=comparison,
             type=type,
             condition_result=condition_result,
             condition_group=condition_group,
+            **kwargs,
         )
 
-    def create_detector(self, *args, **kwargs) -> Detector:
-        return Factories.create_detector(*args, **kwargs)
+    def create_detector(
+        self,
+        *args,
+        project=None,
+        type=ErrorGroupType.slug,
+        **kwargs,
+    ) -> Detector:
+        if project is None:
+            project = self.create_project(organization=self.organization)
 
-    def create_detector_state(self, *args, **kwargs) -> Detector:
+        return Factories.create_detector(*args, project=project, type=type, **kwargs)
+
+    def create_detector_state(self, *args, **kwargs) -> DetectorState:
         return Factories.create_detector_state(*args, **kwargs)
 
     def create_data_source_detector(self, *args, **kwargs):
@@ -675,7 +642,7 @@ class Fixtures:
     def create_workflow_data_condition_group(self, *args, **kwargs):
         return Factories.create_workflow_data_condition_group(*args, **kwargs)
 
-    # workflow_engine action
+    # workflow_engine.models.action
     def create_action(self, *args, **kwargs):
         return Factories.create_action(*args, **kwargs)
 
@@ -684,7 +651,7 @@ class Fixtures:
         type: str = "test",
         subscription_id: str | None = None,
         status: UptimeSubscription.Status = UptimeSubscription.Status.ACTIVE,
-        url="http://sentry.io/",
+        url: str | None = None,
         host_provider_id="TEST",
         url_domain="sentry",
         url_domain_suffix="io",
@@ -694,13 +661,17 @@ class Fixtures:
         headers=None,
         body=None,
         date_updated: None | datetime = None,
+        trace_sampling: bool = False,
+        region_slugs: list[str] | None = None,
     ) -> UptimeSubscription:
         if date_updated is None:
             date_updated = timezone.now()
         if headers is None:
             headers = []
+        if region_slugs is None:
+            region_slugs = []
 
-        return Factories.create_uptime_subscription(
+        subscription = Factories.create_uptime_subscription(
             type=type,
             subscription_id=subscription_id,
             status=status,
@@ -714,7 +685,12 @@ class Fixtures:
             method=method,
             headers=headers,
             body=body,
+            trace_sampling=trace_sampling,
         )
+        for region_slug in region_slugs:
+            Factories.create_uptime_subscription_region(subscription, region_slug)
+
+        return subscription
 
     def create_project_uptime_subscription(
         self,
@@ -722,7 +698,7 @@ class Fixtures:
         env: Environment | None = None,
         uptime_subscription: UptimeSubscription | None = None,
         mode=ProjectUptimeSubscriptionMode.AUTO_DETECTED_ACTIVE,
-        name="Test Name",
+        name: str | None = None,
         owner: User | Team | None = None,
         uptime_status=UptimeStatus.OK,
     ) -> ProjectUptimeSubscription:

@@ -47,14 +47,13 @@ import {
 } from 'sentry/views/performance/utils';
 
 export const AI_COLUMN_TITLES = [
-  'transaction',
-  'operation',
-  'project',
-  'tpm',
-  'p50()',
-  'p75()',
-  'p95()',
-  'users',
+  {title: 'transaction'},
+  {title: 'operation'},
+  {title: 'project'},
+  {title: 'tpm'},
+  {title: 'p50()'},
+  {title: 'p95()'},
+  {title: 'users'},
 ];
 
 function AiOverviewPage() {
@@ -81,9 +80,8 @@ function AiOverviewPage() {
     {field: 'transaction.op'},
     {field: 'project'},
     {field: 'tpm()'},
-    {field: 'p50(transaction.duration)'},
-    {field: 'p75(transaction.duration)'},
-    {field: 'p95(transaction.duration)'},
+    {field: 'p50()'},
+    {field: 'p95()'},
   ].map(field => ({...field, width: COL_WIDTH_UNDEFINED}));
 
   const showOnboarding = onboardingProject !== undefined;
@@ -136,7 +134,7 @@ function AiOverviewPage() {
 
   return (
     <Feature
-      features="insights-domain-view"
+      features="performance-view"
       organization={organization}
       renderDisabled={NoAccess}
     >
@@ -166,7 +164,7 @@ function AiOverviewPage() {
                     onSearch={(query: string) => {
                       handleSearch(query);
                     }}
-                    query={getFreeTextFromQuery(derivedQuery)}
+                    query={getFreeTextFromQuery(derivedQuery)!}
                   />
                 )}
               </ToolRibbon>

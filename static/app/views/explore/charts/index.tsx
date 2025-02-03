@@ -1,47 +1,48 @@
 import {Fragment, useCallback, useMemo} from 'react';
 import styled from '@emotion/styled';
 
-import Feature from 'sentry/components/acl/feature';
-import {getInterval} from 'sentry/components/charts/utils';
 import {CompactSelect} from 'sentry/components/compactSelect';
-import {DropdownMenu} from 'sentry/components/dropdownMenu';
 import {Tooltip} from 'sentry/components/tooltip';
 import {CHART_PALETTE} from 'sentry/constants/chartPalette';
-import {IconClock, IconGraph, IconSubscribed} from 'sentry/icons';
+import {IconClock, IconGraph} from 'sentry/icons';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
+import type {Confidence, NewQuery} from 'sentry/types/organization';
 import {dedupeArray} from 'sentry/utils/dedupeArray';
+import EventView from 'sentry/utils/discover/eventView';
 import {
   aggregateOutputType,
-  formatParsedFunction,
   parseFunction,
+  prettifyParsedFunction,
 } from 'sentry/utils/discover/fields';
+import {DiscoverDatasets} from 'sentry/utils/discover/types';
 import {MutableSearch} from 'sentry/utils/tokenizeSearch';
-import useOrganization from 'sentry/utils/useOrganization';
 import usePageFilters from 'sentry/utils/usePageFilters';
-import useProjects from 'sentry/utils/useProjects';
+import usePrevious from 'sentry/utils/usePrevious';
 import {formatVersion} from 'sentry/utils/versions/formatVersion';
-import {Dataset} from 'sentry/views/alerts/rules/metric/types';
+import {ConfidenceFooter} from 'sentry/views/explore/charts/confidenceFooter';
+import ChartContextMenu from 'sentry/views/explore/components/chartContextMenu';
+import {
+  useExploreDataset,
+  useExploreVisualizes,
+  useSetExploreVisualizes,
+} from 'sentry/views/explore/contexts/pageParamsContext';
 import {useChartInterval} from 'sentry/views/explore/hooks/useChartInterval';
-import {useDataset} from 'sentry/views/explore/hooks/useDataset';
-import {useVisualizes} from 'sentry/views/explore/hooks/useVisualizes';
+import {TOP_EVENTS_LIMIT} from 'sentry/views/explore/hooks/useTopEvents';
 import Chart, {
   ChartType,
   useSynchronizeCharts,
 } from 'sentry/views/insights/common/components/chart';
 import ChartPanel from 'sentry/views/insights/common/components/chartPanel';
-import {useSortedTimeSeries} from 'sentry/views/insights/common/queries/useSortedTimeSeries';
-import {getAlertsUrl} from 'sentry/views/insights/common/utils/getAlertsUrl';
+import type {useSortedTimeSeries} from 'sentry/views/insights/common/queries/useSortedTimeSeries';
+import {useSpansQuery} from 'sentry/views/insights/common/queries/useSpansQuery';
 import {CHART_HEIGHT} from 'sentry/views/insights/database/settings';
 
-import {useGroupBys} from '../hooks/useGroupBys';
-import {useResultMode} from '../hooks/useResultsMode';
-import {useSorts} from '../hooks/useSorts';
-import {TOP_EVENTS_LIMIT, useTopEvents} from '../hooks/useTopEvents';
-import {formatSort} from '../tables/aggregatesTable';
-
 interface ExploreChartsProps {
+  canUsePreviousResults: boolean;
+  confidences: Confidence[];
   query: string;
+  timeseriesResult: ReturnType<typeof useSortedTimeSeries>;
 }
 
 const exploreChartTypeOptions = [
@@ -61,78 +62,106 @@ const exploreChartTypeOptions = [
 
 export const EXPLORE_CHART_GROUP = 'explore-charts_group';
 
-// TODO: Update to support aggregate mode and multiple queries / visualizations
-export function ExploreCharts({query}: ExploreChartsProps) {
-  const pageFilters = usePageFilters();
-  const organization = useOrganization();
-  const {projects} = useProjects();
-
-  const [dataset] = useDataset();
-  const [visualizes, setVisualizes] = useVisualizes();
+export function ExploreCharts({
+  canUsePreviousResults,
+  confidences,
+  query,
+  timeseriesResult,
+}: ExploreChartsProps) {
+  const dataset = useExploreDataset();
+  const visualizes = useExploreVisualizes();
+  const setVisualizes = useSetExploreVisualizes();
   const [interval, setInterval, intervalOptions] = useChartInterval();
-  const {groupBys} = useGroupBys();
-  const [resultMode] = useResultMode();
-  const topEvents = useTopEvents();
 
-  const fields: string[] = useMemo(() => {
-    if (resultMode === 'samples') {
-      return [];
-    }
+  const extrapolationMetaResults = useExtrapolationMeta({
+    dataset,
+    query,
+  });
 
-    return [...groupBys, ...visualizes.flatMap(visualize => visualize.yAxes)].filter(
-      Boolean
-    );
-  }, [resultMode, groupBys, visualizes]);
-  const [sorts] = useSorts({fields});
-
-  const orderby: string | string[] | undefined = useMemo(() => {
-    if (!sorts.length) {
-      return undefined;
-    }
-
-    return sorts.map(formatSort);
-  }, [sorts]);
-
-  const yAxes = useMemo(() => {
-    const deduped = dedupeArray(visualizes.flatMap(visualize => visualize.yAxes));
-    deduped.sort();
-    return deduped;
-  }, [visualizes]);
-
-  const search = new MutableSearch(query);
-
-  // Filtering out all spans with op like 'ui.interaction*' which aren't
-  // embedded under transactions. The trace view does not support rendering
-  // such spans yet.
-  search.addFilterValues('!transaction.span_id', ['00']);
-
-  const timeSeriesResult = useSortedTimeSeries(
-    {
-      search,
-      yAxis: yAxes,
-      interval: interval ?? getInterval(pageFilters.selection.datetime, 'metrics'),
-      fields,
-      orderby,
-      topEvents,
-    },
-    'api.explorer.stats',
-    dataset
-  );
+  const previousTimeseriesResult = usePrevious(timeseriesResult);
 
   const getSeries = useCallback(
-    (dedupedYAxes: string[]) => {
-      return dedupedYAxes.flatMap(yAxis => {
-        const series = timeSeriesResult.data[yAxis];
-        return series !== undefined ? series : [];
+    (dedupedYAxes: string[], formattedYAxes: (string | undefined)[]) => {
+      const shouldUsePreviousResults =
+        timeseriesResult.isPending &&
+        canUsePreviousResults &&
+        dedupedYAxes.every(yAxis => previousTimeseriesResult.data.hasOwnProperty(yAxis));
+
+      const data = dedupedYAxes.flatMap((yAxis, i) => {
+        const series = shouldUsePreviousResults
+          ? previousTimeseriesResult.data[yAxis]
+          : timeseriesResult.data[yAxis];
+
+        return (series ?? []).map(s => {
+          // We replace the series name with the formatted series name here
+          // when possible as it's cleaner to read.
+          //
+          // We can't do this in top N mode as the series name uses the row
+          // values instead of the aggregate function.
+          if (s.seriesName === yAxis) {
+            return {
+              ...s,
+              seriesName: formattedYAxes[i] ?? yAxis,
+            };
+          }
+          return s;
+        });
       });
+
+      return {
+        data,
+        error: shouldUsePreviousResults
+          ? previousTimeseriesResult.error
+          : timeseriesResult.error,
+        loading: shouldUsePreviousResults
+          ? previousTimeseriesResult.isPending
+          : timeseriesResult.isPending,
+      };
     },
-    [timeSeriesResult]
+    [canUsePreviousResults, timeseriesResult, previousTimeseriesResult]
   );
+
+  const chartInfos = useMemo(() => {
+    return visualizes.map((visualize, index) => {
+      const dedupedYAxes = dedupeArray(visualize.yAxes);
+
+      const formattedYAxes = dedupedYAxes.map(yaxis => {
+        const func = parseFunction(yaxis);
+        return func ? prettifyParsedFunction(func) : undefined;
+      });
+
+      const chartIcon =
+        visualize.chartType === ChartType.LINE
+          ? 'line'
+          : visualize.chartType === ChartType.AREA
+            ? 'area'
+            : 'bar';
+
+      const {data, error, loading} = getSeries(dedupedYAxes, formattedYAxes);
+
+      const outputTypes = new Set(
+        formattedYAxes.filter(Boolean).map(aggregateOutputType)
+      );
+
+      return {
+        chartIcon: <IconGraph type={chartIcon} />,
+        chartType: visualize.chartType,
+        label: visualize.label,
+        yAxes: visualize.yAxes,
+        formattedYAxes,
+        data,
+        error,
+        loading,
+        outputTypes,
+        confidence: confidences[index],
+      };
+    });
+  }, [confidences, getSeries, visualizes]);
 
   const handleChartTypeChange = useCallback(
     (chartType: ChartType, index: number) => {
       const newVisualizes = visualizes.slice();
-      newVisualizes[index] = {...newVisualizes[index], chartType};
+      newVisualizes[index] = {...newVisualizes[index]!, chartType};
       setVisualizes(newVisualizes);
     },
     [visualizes, setVisualizes]
@@ -140,7 +169,7 @@ export function ExploreCharts({query}: ExploreChartsProps) {
 
   useSynchronizeCharts(
     visualizes.length,
-    !timeSeriesResult.isPending,
+    !timeseriesResult.isPending,
     EXPLORE_CHART_GROUP
   );
 
@@ -148,64 +177,26 @@ export function ExploreCharts({query}: ExploreChartsProps) {
 
   return (
     <Fragment>
-      {visualizes.map((visualize, index) => {
-        const dedupedYAxes = dedupeArray(visualize.yAxes);
-
-        const formattedYAxes = dedupedYAxes
-          .map(yaxis => {
-            const func = parseFunction(yaxis);
-            return func ? formatParsedFunction(func) : undefined;
-          })
-          .filter(Boolean);
-
-        const {chartType, label, yAxes: visualizeYAxes} = visualize;
-        const chartIcon =
-          chartType === ChartType.LINE
-            ? 'line'
-            : chartType === ChartType.AREA
-              ? 'area'
-              : 'bar';
-
-        const project =
-          projects.length === 1
-            ? projects[0]
-            : projects.find(p => p.id === `${pageFilters.selection.projects[0]}`);
-        const singleProject =
-          (pageFilters.selection.projects.length === 1 || projects.length === 1) &&
-          project;
-        const alertsUrls = singleProject
-          ? visualizeYAxes.map(yAxis => ({
-              key: yAxis,
-              label: yAxis,
-              to: getAlertsUrl({
-                project,
-                query,
-                pageFilters: pageFilters.selection,
-                aggregate: yAxis,
-                orgSlug: organization.slug,
-                dataset: Dataset.EVENTS_ANALYTICS_PLATFORM,
-                interval,
-              }),
-            }))
-          : undefined;
-
+      {chartInfos.map((chartInfo, index) => {
         return (
           <ChartContainer key={index}>
             <ChartPanel>
               <ChartHeader>
-                {shouldRenderLabel && <ChartLabel>{label}</ChartLabel>}
-                <ChartTitle>{formattedYAxes.join(', ')}</ChartTitle>
+                {shouldRenderLabel && <ChartLabel>{chartInfo.label}</ChartLabel>}
+                <ChartTitle>
+                  {chartInfo.formattedYAxes.filter(Boolean).join(', ')}
+                </ChartTitle>
                 <Tooltip
                   title={t('Type of chart displayed in this visualization (ex. line)')}
                 >
                   <CompactSelect
                     triggerProps={{
-                      icon: <IconGraph type={chartIcon} />,
+                      icon: chartInfo.chartIcon,
                       borderless: true,
                       showChevron: false,
                       size: 'sm',
                     }}
-                    value={chartType}
+                    value={chartInfo.chartType}
                     menuTitle="Type"
                     options={exploreChartTypeOptions}
                     onChange={option => handleChartTypeChange(option.value, index)}
@@ -227,55 +218,91 @@ export function ExploreCharts({query}: ExploreChartsProps) {
                     options={intervalOptions}
                   />
                 </Tooltip>
-                <Feature features="organizations:alerts-eap">
-                  <Tooltip
-                    title={
-                      singleProject
-                        ? t('Create an alert for this chart')
-                        : t('Cannot create an alert when multiple projects are selected')
-                    }
-                  >
-                    <DropdownMenu
-                      triggerProps={{
-                        'aria-label': t('Create Alert'),
-                        size: 'sm',
-                        borderless: true,
-                        showChevron: false,
-                        icon: <IconSubscribed />,
-                      }}
-                      position="bottom-end"
-                      items={alertsUrls ?? []}
-                      menuTitle={t('Create an alert for')}
-                      isDisabled={!alertsUrls || alertsUrls.length === 0}
-                    />
-                  </Tooltip>
-                </Feature>
+                <ChartContextMenu
+                  visualizeYAxes={chartInfo.yAxes}
+                  query={query}
+                  interval={interval}
+                  visualizeIndex={index}
+                />
               </ChartHeader>
               <Chart
                 height={CHART_HEIGHT}
                 grid={{
                   left: '0',
                   right: '0',
-                  top: '8px',
+                  top: '32px', // make room to fit the legend above the chart
                   bottom: '0',
                 }}
                 legendFormatter={value => formatVersion(value)}
-                data={getSeries(dedupedYAxes)}
-                error={timeSeriesResult.error}
-                loading={timeSeriesResult.isPending}
+                legendOptions={{
+                  itemGap: 24,
+                  top: '4px',
+                }}
+                data={chartInfo.data}
+                error={chartInfo.error}
+                loading={chartInfo.loading}
                 chartGroup={EXPLORE_CHART_GROUP}
                 // TODO Abdullah: Make chart colors dynamic, with changing topN events count and overlay count.
                 chartColors={CHART_PALETTE[TOP_EVENTS_LIMIT - 1]}
-                type={chartType}
-                // for now, use the first y axis unit
-                aggregateOutputFormat={aggregateOutputType(dedupedYAxes[0])}
+                type={chartInfo.chartType}
+                aggregateOutputFormat={
+                  chartInfo.outputTypes.size === 1
+                    ? chartInfo.outputTypes.keys().next().value
+                    : undefined
+                }
+                showLegend
               />
+              {dataset === DiscoverDatasets.SPANS_EAP_RPC && (
+                <ChartFooter>
+                  <ConfidenceFooter
+                    sampleCount={extrapolationMetaResults.data?.[0]?.['count_sample()']}
+                    confidence={chartInfo.confidence}
+                  />
+                </ChartFooter>
+              )}
             </ChartPanel>
           </ChartContainer>
         );
       })}
     </Fragment>
   );
+}
+
+export function useExtrapolationMeta({
+  dataset,
+  query,
+}: {
+  dataset: DiscoverDatasets;
+  query: string;
+}) {
+  const {selection} = usePageFilters();
+
+  const extrapolationMetaEventView = useMemo(() => {
+    const search = new MutableSearch(query);
+
+    // Filtering out all spans with op like 'ui.interaction*' which aren't
+    // embedded under transactions. The trace view does not support rendering
+    // such spans yet.
+    search.addFilterValues('!transaction.span_id', ['00']);
+
+    const discoverQuery: NewQuery = {
+      id: undefined,
+      name: 'Explore - Extrapolation Meta',
+      fields: ['count_sample()', 'min(sampling_rate)'],
+      query: search.formatString(),
+      version: 2,
+      dataset,
+    };
+
+    return EventView.fromNewQueryWithPageFilters(discoverQuery, selection);
+  }, [dataset, query, selection]);
+
+  return useSpansQuery({
+    eventView: extrapolationMetaEventView,
+    initialData: [],
+    referrer: 'api.explore.spans-extrapolation-meta',
+    enabled: dataset === DiscoverDatasets.SPANS_EAP_RPC,
+  });
 }
 
 const ChartContainer = styled('div')`
@@ -288,7 +315,6 @@ const ChartContainer = styled('div')`
 const ChartHeader = styled('div')`
   display: flex;
   justify-content: space-between;
-  gap: ${space(1)};
 `;
 
 const ChartTitle = styled('div')`
@@ -306,4 +332,11 @@ const ChartLabel = styled('div')`
   white-space: nowrap;
   font-weight: ${p => p.theme.fontWeightBold};
   align-content: center;
+  margin-right: ${space(1)};
+`;
+
+const ChartFooter = styled('div')`
+  display: inline-block;
+  margin-top: ${space(1.5)};
+  margin-bottom: 0;
 `;

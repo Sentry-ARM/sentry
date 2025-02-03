@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import copy
 import logging
-import os
 import sys
 from collections.abc import Generator, Mapping, Sequence
 from types import FrameType
@@ -26,7 +25,7 @@ from sentry.conf.types.sdk_config import SdkConfig
 from sentry.features.rollout import in_random_rollout
 from sentry.utils import metrics
 from sentry.utils.db import DjangoAtomicIntegration
-from sentry.utils.flag import get_flags_serialized
+from sentry.utils.flag import FlagPoleIntegration
 from sentry.utils.rust import RustInfoIntegration
 
 # Can't import models in utils because utils should be the bottom of the food chain
@@ -242,11 +241,6 @@ def before_send(event: Event, _: Hint) -> Event | None:
             event["tags"]["silo_mode"] = str(settings.SILO_MODE)
         if settings.SENTRY_REGION:
             event["tags"]["sentry_region"] = settings.SENTRY_REGION
-
-    if "contexts" not in event:
-        event["contexts"] = {}
-    event["contexts"]["flags"] = {"values": get_flags_serialized()}
-
     return event
 
 
@@ -451,8 +445,6 @@ def configure_sdk():
         "schedule-digests",
     ]
 
-    enable_cache_spans = os.getenv("SENTRY_URL_PREFIX") == "sentry.my.sentry.io"
-
     sentry_sdk.init(
         # set back the sentry4sentry_dsn popped above since we need a default dsn on the client
         # for dynamic sampling context public_key population
@@ -460,7 +452,7 @@ def configure_sdk():
         transport=MultiplexingTransport(),
         integrations=[
             DjangoAtomicIntegration(),
-            DjangoIntegration(signals_spans=False, cache_spans=enable_cache_spans),
+            DjangoIntegration(signals_spans=False, cache_spans=True),
             CeleryIntegration(monitor_beat_tasks=True, exclude_beat_tasks=exclude_beat_tasks),
             # This makes it so all levels of logging are recorded as breadcrumbs,
             # but none are captured as events (that's handled by the `internal`
@@ -470,6 +462,7 @@ def configure_sdk():
             RustInfoIntegration(),
             RedisIntegration(),
             ThreadingIntegration(propagate_hub=True),
+            FlagPoleIntegration(),
         ],
         **sdk_options,
     )

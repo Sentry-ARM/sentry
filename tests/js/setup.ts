@@ -12,6 +12,7 @@ import {resetMockDate} from 'sentry-test/utils';
 
 // eslint-disable-next-line jest/no-mocks-import
 import type {Client} from 'sentry/__mocks__/api';
+// eslint-disable-next-line no-restricted-imports
 import {DEFAULT_LOCALE_DATA, setLocale} from 'sentry/locale';
 import ConfigStore from 'sentry/stores/configStore';
 import {DANGEROUS_SET_TEST_HISTORY} from 'sentry/utils/browserHistory';
@@ -68,7 +69,6 @@ jest
   .spyOn(performanceForSentry, 'VisuallyCompleteWithData')
   .mockImplementation(props => props.children as ReactElement);
 jest.mock('scroll-to-element', () => jest.fn());
-jest.mock('sentry/utils/search/searchBoxTextArea');
 
 DANGEROUS_SET_TEST_HISTORY({
   goBack: jest.fn(),

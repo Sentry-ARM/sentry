@@ -1,7 +1,6 @@
 import type {Client} from 'sentry/api';
 import type {StepProps} from 'sentry/components/onboarding/gettingStartedDoc/step';
 import type {ReleaseRegistrySdk} from 'sentry/components/onboarding/gettingStartedDoc/useSourcePackageRegistries';
-import type {ProductSolution} from 'sentry/components/onboarding/productSelection';
 import type {Organization} from 'sentry/types/organization';
 import type {PlatformKey, Project, ProjectKey} from 'sentry/types/project';
 
@@ -40,6 +39,13 @@ export enum DocsPageLocation {
   PROFILING_PAGE = 1,
 }
 
+export enum ProductSolution {
+  ERROR_MONITORING = 'error-monitoring',
+  PERFORMANCE_MONITORING = 'performance-monitoring',
+  SESSION_REPLAY = 'session-replay',
+  PROFILING = 'profiling',
+}
+
 export interface DocsParams<
   PlatformOptions extends BasePlatformOptions = BasePlatformOptions,
 > {
@@ -62,6 +68,9 @@ export interface DocsParams<
    * The page where the docs are being displayed
    */
   docsLocation?: DocsPageLocation;
+  featureFlagOptions?: {
+    integration: string;
+  };
   feedbackOptions?: {
     email?: boolean;
     name?: boolean;
@@ -106,7 +115,9 @@ export interface Docs<PlatformOptions extends BasePlatformOptions = BasePlatform
   onboarding: OnboardingConfig<PlatformOptions>;
   crashReportOnboarding?: OnboardingConfig<PlatformOptions>;
   customMetricsOnboarding?: OnboardingConfig<PlatformOptions>;
+  featureFlagOnboarding?: OnboardingConfig<PlatformOptions>;
   feedbackOnboardingCrashApi?: OnboardingConfig<PlatformOptions>;
+  feedbackOnboardingJsLoader?: OnboardingConfig<PlatformOptions>;
   feedbackOnboardingNpm?: OnboardingConfig<PlatformOptions>;
   performanceOnboarding?: OnboardingConfig<PlatformOptions>;
   platformOptions?: PlatformOptions;
@@ -119,7 +130,9 @@ export type ConfigType =
   | 'onboarding'
   | 'feedbackOnboardingNpm'
   | 'feedbackOnboardingCrashApi'
+  | 'feedbackOnboardingJsLoader'
   | 'crashReportOnboarding'
   | 'replayOnboarding'
   | 'replayOnboardingJsLoader'
-  | 'customMetricsOnboarding';
+  | 'customMetricsOnboarding'
+  | 'featureFlagOnboarding';

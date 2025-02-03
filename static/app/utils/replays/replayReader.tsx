@@ -42,8 +42,12 @@ import {
   isConsoleFrame,
   isDeadClick,
   isDeadRageClick,
+  isMetaFrame,
   isPaintFrame,
+  isTouchEndFrame,
+  isTouchStartFrame,
   isWebVitalFrame,
+  NodeType,
 } from 'sentry/utils/replays/types';
 import type {ReplayError, ReplayRecord} from 'sentry/views/replays/types';
 
@@ -245,7 +249,7 @@ export default class ReplayReader {
     this._errors = errorFrames.sort(sortFrames);
     // RRWeb Events are not sorted here, they are fetched in sorted order.
     this._sortedRRWebEvents = rrwebFrames;
-    this._videoEvents = videoFrames;
+    this._videoEvents = videoFrames.sort((a, b) => a.timestamp - b.timestamp);
     // Breadcrumbs must be sorted. Crumbs like `slowClick` and `multiClick` will
     // have the same timestamp as the click breadcrumb, but will be emitted a
     // few seconds later.
@@ -428,22 +432,26 @@ export default class ReplayReader {
     return this.processingErrors().length;
   };
 
-  getExtractDomNodes = memoize(async () => {
-    if (this._fetching) {
-      return null;
+  getExtractDomNodes = memoize(
+    async ({withoutStyles}: {withoutStyles?: boolean} = {}) => {
+      if (this._fetching) {
+        return null;
+      }
+      const {onVisitFrame, shouldVisitFrame} = extractDomNodes;
+
+      const results = await replayerStepper({
+        frames: this.getDOMFrames(),
+        rrwebEvents: withoutStyles
+          ? this.getRRWebFramesWithoutStyles()
+          : this.getRRWebFrames(),
+        startTimestampMs: this.getReplay().started_at.getTime() ?? 0,
+        onVisitFrame,
+        shouldVisitFrame,
+      });
+
+      return results;
     }
-    const {onVisitFrame, shouldVisitFrame} = extractDomNodes;
-
-    const results = await replayerStepper({
-      frames: this.getDOMFrames(),
-      rrwebEvents: this.getRRWebFrames(),
-      startTimestampMs: this.getReplay().started_at.getTime() ?? 0,
-      onVisitFrame,
-      shouldVisitFrame,
-    });
-
-    return results;
-  });
+  );
 
   getClipWindow = () => this._clipWindow;
 
@@ -473,6 +481,97 @@ export default class ReplayReader {
   };
 
   getRRWebFrames = () => this._sortedRRWebEvents;
+
+  getRRWebFramesWithSnapshots = memoize(() => {
+    const eventsWithSnapshots: RecordingFrame[] = [];
+    const events = this._sortedRRWebEvents;
+    events.forEach((e, index) => {
+      // For taps, sometimes the timestamp difference between TouchStart
+      // and TouchEnd is too small. This clamps the tap to a min time
+      // if the difference is less, so that the rrweb tap is visible and obvious.
+      if (isTouchStartFrame(e) && index < events.length - 2) {
+        const nextEvent = events[index + 1]!;
+        if (isTouchEndFrame(nextEvent)) {
+          nextEvent.timestamp = Math.max(nextEvent.timestamp, e.timestamp + 500);
+        }
+      }
+      eventsWithSnapshots.push(e);
+      if (isMetaFrame(e)) {
+        // Create a mock full snapshot event, in order to render rrweb gestures properly
+        // Need to add one for every meta event we see
+        // The hardcoded data.node.id here should match the ID of the data being sent
+        // in the `positions` arrays
+        eventsWithSnapshots.push({
+          type: EventType.FullSnapshot,
+          data: {
+            node: {
+              type: NodeType.Document,
+              childNodes: [
+                {
+                  type: NodeType.DocumentType,
+                  id: 1,
+                  name: 'html',
+                  publicId: '',
+                  systemId: '',
+                },
+                {
+                  type: NodeType.Element,
+                  id: 2,
+                  tagName: 'html',
+                  attributes: {
+                    lang: 'en',
+                  },
+                  childNodes: [],
+                },
+              ],
+              id: 0,
+            },
+            initialOffset: {
+              top: 0,
+              left: 0,
+            },
+          },
+          timestamp: e.timestamp,
+        });
+      }
+    });
+    return eventsWithSnapshots;
+  });
+
+  /**
+   * Filter out style mutations as they can cause perf problems especially when
+   * used in replayStepper
+   */
+  getRRWebFramesWithoutStyles = memoize(() => {
+    return this.getRRWebFrames().map(e => {
+      if (
+        e.type === EventType.IncrementalSnapshot &&
+        'source' in e.data &&
+        e.data.source === IncrementalSource.Mutation
+      ) {
+        return {
+          ...e,
+          data: {
+            ...e.data,
+            adds: e.data.adds.filter(
+              add =>
+                !(
+                  (add.node.type === 3 && add.node.isStyle) ||
+                  (add.node.type === 2 && add.node.tagName === 'style')
+                )
+            ),
+          },
+        };
+      }
+      return e;
+    });
+  });
+
+  getRRwebTouchEvents = memoize(() =>
+    this.getRRWebFramesWithSnapshots().filter(
+      e => isTouchEndFrame(e) || isTouchStartFrame(e)
+    )
+  );
 
   getBreadcrumbFrames = () => this._sortedBreadcrumbFrames;
 
@@ -572,7 +671,7 @@ export default class ReplayReader {
     const crumbs = removeDuplicateClicks(
       this._sortedBreadcrumbFrames.filter(
         frame =>
-          ['navigation', 'ui.click', 'ui.tap'].includes(frame.category) ||
+          ['navigation', 'ui.click', 'ui.tap', 'ui.swipe'].includes(frame.category) ||
           (frame.category === 'ui.slowClickDetected' &&
             (isDeadClick(frame as SlowClickFrame) ||
               isDeadRageClick(frame as SlowClickFrame)))

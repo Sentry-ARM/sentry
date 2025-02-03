@@ -12,7 +12,7 @@ import jsonschema
 from django.conf import settings
 from django.db import models
 from django.db.models import Case, IntegerField, Q, Value, When
-from django.db.models.signals import post_delete, pre_save
+from django.db.models.signals import pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
@@ -230,8 +230,6 @@ class Monitor(Model):
     organization_id = BoundedBigIntegerField(db_index=True)
     project_id = BoundedBigIntegerField(db_index=True)
 
-    # TODO(epurkhiser): Muted is moving to its own boolean column, this should
-    # become object status again
     status = BoundedPositiveIntegerField(
         default=ObjectStatus.ACTIVE, choices=ObjectStatus.as_choices()
     )
@@ -533,8 +531,6 @@ class MonitorCheckIn(Model):
     that occurred during the check-in.
     """
 
-    attachment_id = BoundedBigIntegerField(null=True)
-
     objects: ClassVar[BaseManager[Self]] = BaseManager(cache_fields=("guid",))
 
     class Meta:
@@ -563,6 +559,8 @@ class MonitorCheckIn(Model):
             models.Index(fields=["monitor_environment", "status", "date_added"]),
             # used for timeout task
             models.Index(fields=["status", "timeout_at"]),
+            # used for dispatch_mark_unknown
+            models.Index(fields=["status", "date_added"]),
             # used for check-in list
             models.Index(fields=["trace_id"]),
         ]
@@ -580,16 +578,6 @@ class MonitorCheckIn(Model):
     # what we want to happen, so kill it here
     def _update_timestamps(self):
         pass
-
-
-def delete_file_for_monitorcheckin(instance: MonitorCheckIn, **kwargs):
-    if file_id := instance.attachment_id:
-        from sentry.models.files import File
-
-        File.objects.filter(id=file_id).delete()
-
-
-post_delete.connect(delete_file_for_monitorcheckin, sender=MonitorCheckIn)
 
 
 @region_silo_model

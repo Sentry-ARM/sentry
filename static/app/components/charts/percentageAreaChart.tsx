@@ -43,9 +43,9 @@ export default class PercentageAreaChart extends Component<Props> {
     const {series, getDataItemName, getValue} = this.props;
 
     const totalsArray: [string | number, number][] = series.length
-      ? series[0].data.map(({name}, i) => [
+      ? series[0]!.data.map(({name}, i) => [
           name,
-          series.reduce((sum, {data}) => sum + data[i].value, 0),
+          series.reduce((sum, {data}) => sum + data[i]!.value, 0),
         ])
       : [];
     const totals = new Map<string | number, number>(totalsArray);
@@ -76,10 +76,9 @@ export default class PercentageAreaChart extends Component<Props> {
             const series = toArray(seriesParams);
 
             // Filter series that have 0 counts
-            const date =
-              `${
-                series.length && moment(series[0].data[0]).format('MMM D, YYYY')
-              }<br />` || '';
+            const date = `${
+              series.length && moment(series[0].data[0]).format('MMM D, YYYY')
+            }<br />`;
 
             return [
               '<div class="tooltip-series">',

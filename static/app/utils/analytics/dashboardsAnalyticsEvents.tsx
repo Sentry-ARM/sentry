@@ -1,3 +1,5 @@
+import type {DashboardsLayout} from 'sentry/views/dashboards/manage';
+
 // Used in the full-page widget builder
 type DashboardsEventParametersWidgetBuilder = {
   'dashboards_views.widget_builder.change': {
@@ -32,6 +34,11 @@ export type DashboardsEventParameters = {
   'dashboards2.edit.cancel': {};
   'dashboards2.edit.complete': {};
   'dashboards2.edit.start': {};
+  'dashboards2.edit_access.save': {
+    editable_by: 'owner_only' | 'all' | 'team_selection';
+    team_count?: number;
+  };
+  'dashboards2.edit_access.start': {};
   'dashboards2.filter.cancel': {};
   'dashboards2.filter.change': {filter_type: string};
   'dashboards2.filter.save': {};
@@ -39,8 +46,8 @@ export type DashboardsEventParameters = {
     sort: string;
   };
   'dashboards_manage.create.start': {};
-  'dashboards_manage.delete': {dashboard_id: number};
-  'dashboards_manage.duplicate': {dashboard_id: number};
+  'dashboards_manage.delete': {dashboard_id: number; view_type: DashboardsLayout};
+  'dashboards_manage.duplicate': {dashboard_id: number; view_type: DashboardsLayout};
   'dashboards_manage.paginate': {};
   'dashboards_manage.search': {};
   'dashboards_manage.templates.add': {
@@ -153,5 +160,7 @@ export const dashboardsEventMap: Record<DashboardsEventKey, string | null> = {
   'dashboards_views.widget_viewer.sort': 'Widget Viewer: Table Sorted',
   'dashboards_views.widget_viewer.toggle_legend': 'Widget Viewer: Legend Toggled',
   'dashboards_views.widget_viewer.zoom': 'Widget Viewer: Chart zoomed',
+  'dashboards2.edit_access.start': 'Dashboards2: Edit Access Dropdown Opened',
+  'dashboards2.edit_access.save': 'Dashboards2: Edit Access Dropdown Selection Saved',
   ...dashboardsEventMapWidgetBuilder,
 };

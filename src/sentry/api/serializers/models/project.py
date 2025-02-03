@@ -45,6 +45,7 @@ from sentry.release_health.base import CurrentAndPreviousCrashFreeRate
 from sentry.roles import organization_roles
 from sentry.search.events.types import SnubaParams
 from sentry.snuba import discover
+from sentry.tempest.utils import has_tempest_access
 from sentry.users.models.user import User
 
 STATUS_LABELS = {
@@ -78,6 +79,8 @@ PROJECT_FEATURES_NOT_USED_ON_FRONTEND = {
     "first-event-severity-calculation",
     "alert-filters",
     "servicehooks",
+    "similarity-embeddings",
+    "similarity-embeddings-delete-by-hash",
 }
 
 
@@ -258,6 +261,7 @@ class ProjectSerializerBaseResponse(_ProjectSerializerOptionalBaseResponse):
     hasAccess: bool
     hasCustomMetrics: bool
     hasFeedbacks: bool
+    hasFlags: bool
     hasMinifiedStackTrace: bool
     hasMonitors: bool
     hasNewFeedbacks: bool
@@ -521,6 +525,7 @@ class ProjectSerializer(Serializer):
             "hasProfiles": bool(obj.flags.has_profiles),
             "hasReplays": bool(obj.flags.has_replays),
             "hasFeedbacks": bool(obj.flags.has_feedbacks),
+            "hasFlags": bool(obj.flags.has_flags),
             "hasNewFeedbacks": bool(obj.flags.has_new_feedbacks),
             "hasSessions": bool(obj.flags.has_sessions),
             # whether first span has been sent for each insight module
@@ -767,17 +772,20 @@ class ProjectSummarySerializer(ProjectWithTeamSerializer):
             platforms=attrs["platforms"],
             latestRelease=attrs["latest_release"],
             hasUserReports=attrs["has_user_reports"],
+            hasFlags=bool(obj.flags.has_flags),
         )
         if not self._collapse(LATEST_DEPLOYS_KEY):
             context[LATEST_DEPLOYS_KEY] = attrs["deploys"]
-        if "stats" in attrs:
-            context.update(stats=attrs["stats"])
-        if "transactionStats" in attrs:
-            context.update(transactionStats=attrs["transactionStats"])
-        if "sessionStats" in attrs:
-            context.update(sessionStats=attrs["sessionStats"])
-        if "options" in attrs:
-            context.update(options=attrs["options"])
+
+        if attrs["has_access"] or user.is_staff:
+            if "stats" in attrs:
+                context.update(stats=attrs["stats"])
+            if "transactionStats" in attrs:
+                context.update(transactionStats=attrs["transactionStats"])
+            if "sessionStats" in attrs:
+                context.update(sessionStats=attrs["sessionStats"])
+            if "options" in attrs:
+                context.update(options=attrs["options"])
 
         return context
 
@@ -1069,6 +1077,11 @@ class DetailedProjectSerializer(ProjectWithTeamSerializer):
 
         data["isDynamicallySampled"] = sample_rate is not None and sample_rate < 1.0
 
+        if has_tempest_access(obj.organization, user):
+            data["tempestFetchScreenshots"] = attrs["options"].get(
+                "sentry:tempest_fetch_screenshots", False
+            )
+
         return data
 
     def get_custom_metric_cardinality_limit(self, attrs):
@@ -1156,26 +1169,4 @@ class SharedProjectSerializer(Serializer):
             "color": obj.color,
             "features": feature_list,
             "organization": {"slug": obj.organization.slug, "name": obj.organization.name},
-        }
-
-
-class MinimalProjectSerializer(Serializer):
-    def get_attrs(self, item_list: Sequence[Project], user: User, **kwargs: Any):
-        environments_by_project = get_environments_by_projects(item_list)
-        memberships_by_project = get_access_by_project(item_list, user)
-        return {
-            project: {
-                "environments": environments_by_project[project.id],
-                "isMember": memberships_by_project[project]["is_member"],
-            }
-            for project in item_list
-        }
-
-    def serialize(self, obj: Project, attrs: Mapping[str, Any], user: User):
-        return {
-            "slug": obj.slug,
-            "id": obj.id,
-            "platform": obj.platform,
-            "environments": attrs["environments"],
-            "isMember": attrs["isMember"],
         }

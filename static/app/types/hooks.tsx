@@ -3,10 +3,8 @@ import type {Guide} from 'sentry/components/assistant/types';
 import type {ButtonProps} from 'sentry/components/button';
 import type {FormPanelProps} from 'sentry/components/forms/formPanel';
 import type {JsonFormObject} from 'sentry/components/forms/types';
-import type {
-  ProductSelectionProps,
-  ProductSolution,
-} from 'sentry/components/onboarding/productSelection';
+import type {ProductSolution} from 'sentry/components/onboarding/gettingStartedDoc/types';
+import type {ProductSelectionProps} from 'sentry/components/onboarding/productSelection';
 import type SidebarItem from 'sentry/components/sidebar/sidebarItem';
 import type DateRange from 'sentry/components/timeRangeSelector/dateRange';
 import type SelectorItems from 'sentry/components/timeRangeSelector/selectorItems';
@@ -72,7 +70,9 @@ export type RouteHooks = {
  * Component specific hooks for DateRange and SelectorItems
  * These components have plan specific overrides in getsentry
  */
-type AutofixSetupConsentStepProps = {hasConsented: boolean};
+type AiSetupDataConsentProps = {
+  groupId: string;
+};
 type DateRangeProps = React.ComponentProps<typeof DateRange>;
 
 type SelectorItemsProps = React.ComponentProps<typeof SelectorItems>;
@@ -184,7 +184,7 @@ export type MembershipSettingsProps = {
  * Component wrapping hooks
  */
 export type ComponentHooks = {
-  'component:autofix-setup-step-consent': () => React.ComponentType<AutofixSetupConsentStepProps> | null;
+  'component:ai-setup-data-consent': () => React.ComponentType<AiSetupDataConsentProps> | null;
   'component:codecov-integration-settings-link': () => React.ComponentType<CodecovLinkProps>;
   'component:confirm-account-close': () => React.ComponentType<AttemptCloseAttemptProps>;
   'component:crons-list-page-header': () => React.ComponentType<CronsBillingBannerProps>;
@@ -685,6 +685,11 @@ type InviteModalCustomizationHook = () => React.ComponentType<{
      * invites may currently be sent.
      */
     canSend: boolean;
+    /**
+     * Indicates that the account has reached the maximum member limit. Future invitations
+     * are limited to Billing roles
+     */
+    isOverMemberLimit: boolean;
     /**
      * Trigger sending invites
      */

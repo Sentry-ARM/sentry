@@ -18,7 +18,6 @@ import {
 import {hasCustomMetrics} from 'sentry/utils/metrics/features';
 import {
   DEFAULT_EAP_METRICS_ALERT_FIELD,
-  DEFAULT_INSIGHTS_METRICS_ALERT_FIELD,
   DEFAULT_METRIC_ALERT_FIELD,
 } from 'sentry/utils/metrics/mri';
 import {ON_DEMAND_METRICS_UNSUPPORTED_TAGS} from 'sentry/utils/onDemandMetrics/constants';
@@ -29,8 +28,6 @@ import {
   SessionsAggregate,
 } from 'sentry/views/alerts/rules/metric/types';
 import {hasEAPAlerts} from 'sentry/views/insights/common/utils/hasEAPAlerts';
-import {hasInsightsAlerts} from 'sentry/views/insights/common/utils/hasInsightsAlerts';
-import {MODULE_TITLE as LLM_MONITORING_MODULE_TITLE} from 'sentry/views/insights/llmMonitoring/settings';
 
 export type AlertType =
   | 'issues'
@@ -47,10 +44,8 @@ export type AlertType =
   | 'crash_free_users'
   | 'custom_transactions'
   | 'custom_metrics'
-  | 'llm_tokens'
-  | 'llm_cost'
-  | 'insights_metrics'
   | 'uptime_monitor'
+  | 'crons_monitor'
   | 'eap_metrics';
 
 export enum MEPAlertsQueryType {
@@ -65,7 +60,10 @@ export enum MEPAlertsDataset {
   METRICS_ENHANCED = 'metricsEnhanced',
 }
 
-export type MetricAlertType = Exclude<AlertType, 'issues' | 'uptime_monitor'>;
+export type MetricAlertType = Exclude<
+  AlertType,
+  'issues' | 'uptime_monitor' | 'crons_monitor'
+>;
 
 export const DatasetMEPAlertQueryTypes: Record<
   Exclude<Dataset, Dataset.ISSUE_PLATFORM | Dataset.SESSIONS | Dataset.REPLAYS>, // IssuePlatform (search_issues) is not used in alerts, so we can exclude it here
@@ -93,11 +91,9 @@ export const AlertWizardAlertNames: Record<AlertType, string> = {
   custom_transactions: t('Custom Measurement'),
   crash_free_sessions: t('Crash Free Session Rate'),
   crash_free_users: t('Crash Free User Rate'),
-  llm_cost: t('LLM cost'),
-  llm_tokens: t('LLM token usage'),
-  insights_metrics: t('Insights Metric'),
   uptime_monitor: t('Uptime Monitor'),
-  eap_metrics: t('EAP Metric'),
+  eap_metrics: t('Spans'),
+  crons_monitor: t('Cron Monitor'),
 };
 
 /**
@@ -105,8 +101,12 @@ export const AlertWizardAlertNames: Record<AlertType, string> = {
  * for adding feature badges or other call-outs for newer alert types.
  */
 export const AlertWizardExtraContent: Partial<Record<AlertType, React.ReactNode>> = {
-  insights_metrics: <FeatureBadge type="alpha" />,
-  eap_metrics: <FeatureBadge type="experimental" />,
+  eap_metrics: (
+    <FeatureBadge
+      type="beta"
+      title={t('This feature is available for early adopters and the UX may change')}
+    />
+  ),
   uptime_monitor: <FeatureBadge type="beta" />,
 };
 
@@ -140,21 +140,22 @@ export const getAlertWizardCategories = (org: Organization) => {
         'fid',
         'cls',
         ...(hasCustomMetrics(org) ? (['custom_transactions'] satisfies AlertType[]) : []),
-        ...(hasInsightsAlerts(org) ? ['insights_metrics' as const] : []),
         ...(hasEAPAlerts(org) ? ['eap_metrics' as const] : []),
       ],
     });
-    if (org.features.includes('insights-addon-modules')) {
-      result.push({
-        categoryHeading: LLM_MONITORING_MODULE_TITLE,
-        options: ['llm_tokens', 'llm_cost'],
-      });
-    }
 
     result.push({
       categoryHeading: t('Uptime Monitoring'),
       options: ['uptime_monitor'],
     });
+
+    if (org.features.includes('insights-crons')) {
+      result.push({
+        categoryHeading: t('Cron Monitoring'),
+        options: ['crons_monitor'],
+      });
+    }
+
     result.push({
       categoryHeading: hasCustomMetrics(org) ? t('Metrics') : t('Custom'),
       options: [hasCustomMetrics(org) ? 'custom_metrics' : 'custom_transactions'],
@@ -226,21 +227,6 @@ export const AlertWizardRuleTemplates: Record<
   },
   custom_metrics: {
     aggregate: DEFAULT_METRIC_ALERT_FIELD,
-    dataset: Dataset.GENERIC_METRICS,
-    eventTypes: EventTypes.TRANSACTION,
-  },
-  llm_tokens: {
-    aggregate: 'sum(ai.total_tokens.used)',
-    dataset: Dataset.GENERIC_METRICS,
-    eventTypes: EventTypes.TRANSACTION,
-  },
-  llm_cost: {
-    aggregate: 'sum(ai.total_cost)',
-    dataset: Dataset.GENERIC_METRICS,
-    eventTypes: EventTypes.TRANSACTION,
-  },
-  insights_metrics: {
-    aggregate: DEFAULT_INSIGHTS_METRICS_ALERT_FIELD,
     dataset: Dataset.GENERIC_METRICS,
     eventTypes: EventTypes.TRANSACTION,
   },

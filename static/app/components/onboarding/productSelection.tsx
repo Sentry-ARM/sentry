@@ -8,6 +8,7 @@ import {FeatureDisabledModal} from 'sentry/components/acl/featureDisabledModal';
 import {Button} from 'sentry/components/button';
 import Checkbox from 'sentry/components/checkbox';
 import ExternalLink from 'sentry/components/links/externalLink';
+import {ProductSolution} from 'sentry/components/onboarding/gettingStartedDoc/types';
 import {Tooltip} from 'sentry/components/tooltip';
 import {IconQuestion} from 'sentry/icons';
 import {t, tct} from 'sentry/locale';
@@ -17,14 +18,6 @@ import {space} from 'sentry/styles/space';
 import type {Organization} from 'sentry/types/organization';
 import type {PlatformKey} from 'sentry/types/project';
 import {useOnboardingQueryParams} from 'sentry/views/onboarding/components/useOnboardingQueryParams';
-
-// TODO(aknaus): move to types
-export enum ProductSolution {
-  ERROR_MONITORING = 'error-monitoring',
-  PERFORMANCE_MONITORING = 'performance-monitoring',
-  SESSION_REPLAY = 'session-replay',
-  PROFILING = 'profiling',
-}
 
 interface DisabledProduct {
   reason: ReactNode;
@@ -82,7 +75,7 @@ function getDisabledProducts(organization: Organization): DisabledProducts {
 // Since the ProductSelection component is rendered in the onboarding/project creation flow only, it is ok to have this list here
 // NOTE: Please keep the prefix in alphabetical order
 export const platformProductAvailability = {
-  android: [ProductSolution.PERFORMANCE_MONITORING, ProductSolution.PROFILING],
+  android: [ProductSolution.PERFORMANCE_MONITORING],
   'apple-ios': [ProductSolution.PERFORMANCE_MONITORING, ProductSolution.PROFILING],
   'apple-macos': [ProductSolution.PERFORMANCE_MONITORING, ProductSolution.PROFILING],
   bun: [ProductSolution.PERFORMANCE_MONITORING],
@@ -116,10 +109,6 @@ export const platformProductAvailability = {
     ProductSolution.SESSION_REPLAY,
   ],
   'javascript-vue': [
-    ProductSolution.PERFORMANCE_MONITORING,
-    ProductSolution.SESSION_REPLAY,
-  ],
-  'javascript-nuxt': [
     ProductSolution.PERFORMANCE_MONITORING,
     ProductSolution.SESSION_REPLAY,
   ],

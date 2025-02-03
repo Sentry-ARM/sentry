@@ -7,6 +7,12 @@
 # shellcheck disable=SC2034 # Unused variables
 # shellcheck disable=SC2001 # https://github.com/koalaman/shellcheck/wiki/SC2001
 
+POSTGRES_CONTAINER="sentry_postgres"
+USE_NEW_DEVSERVICES=${USE_NEW_DEVSERVICES:-"0"}
+if [ "$USE_NEW_DEVSERVICES" == "1" ]; then
+    POSTGRES_CONTAINER="sentry-postgres-1"
+fi
+
 # This block is a safe-guard since in CI calling tput will fail and abort scripts
 if [ -z "${CI+x}" ]; then
     bold="$(tput bold)"
@@ -57,11 +63,11 @@ EOF
     else
         minor=$(echo "${python_version}" | sed 's/[0-9]*\.\([0-9]*\)\.\([0-9]*\)/\1/')
         patch=$(echo "${python_version}" | sed 's/[0-9]*\.\([0-9]*\)\.\([0-9]*\)/\2/')
-        if [ "$minor" -ne 12 ] || [ "$patch" -lt 1 ]; then
+        if [ "$minor" -ne 13 ] || [ "$patch" -lt 0 ]; then
             cat <<EOF
     ${red}${bold}
     ERROR: You're running a virtualenv with Python ${python_version}.
-    We only support >= 3.12.1, < 3.13.
+    We only support >= 3.13.0, < 3.14.
     Either run "rm -rf ${venv_name} && direnv allow" to
     OR set SENTRY_PYTHON_VERSION=${python_version} to an .env file to bypass this check."
 EOF
@@ -87,7 +93,7 @@ run-dependent-services() {
 }
 
 create-db() {
-    container_name=${POSTGRES_CONTAINER:-sentry_postgres}
+    container_name=${POSTGRES_CONTAINER}
     echo "--> Creating 'sentry' database"
     docker exec "${container_name}" createdb -h 127.0.0.1 -U postgres -E utf-8 sentry || true
     echo "--> Creating 'control', 'region' and 'secondary' database"
@@ -132,7 +138,7 @@ clean() {
 }
 
 drop-db() {
-    container_name=${POSTGRES_CONTAINER:-sentry_postgres}
+    container_name=${POSTGRES_CONTAINER}
     echo "--> Dropping existing 'sentry' database"
     docker exec "${container_name}" dropdb --if-exists -h 127.0.0.1 -U postgres sentry
     echo "--> Dropping 'control' and 'region' database"

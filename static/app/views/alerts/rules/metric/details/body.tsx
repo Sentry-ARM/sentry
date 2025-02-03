@@ -32,7 +32,6 @@ import {
   TimePeriod,
 } from 'sentry/views/alerts/rules/metric/types';
 import {extractEventTypeFilterFromRule} from 'sentry/views/alerts/rules/metric/utils/getEventTypeFilter';
-import {isInsightsMetricAlert} from 'sentry/views/alerts/rules/metric/utils/isInsightsMetricAlert';
 import {isOnDemandMetricAlert} from 'sentry/views/alerts/rules/metric/utils/onDemandMetricAlert';
 import {getAlertRuleActionCategory} from 'sentry/views/alerts/rules/utils';
 import type {Anomaly, Incident} from 'sentry/views/alerts/types';
@@ -103,7 +102,11 @@ export default function MetricDetailsBody({
 
     const {aggregate, dataset, query} = rule;
 
-    if (isCrashFreeAlert(dataset) || isCustomMetricAlert(aggregate)) {
+    if (
+      isCrashFreeAlert(dataset) ||
+      isCustomMetricAlert(aggregate) ||
+      dataset === Dataset.EVENTS_ANALYTICS_PLATFORM
+    ) {
       return query.trim().split(' ');
     }
 
@@ -179,7 +182,7 @@ export default function MetricDetailsBody({
 
   return (
     <Fragment>
-      {isCustomMetricAlert(rule.aggregate) && !isInsightsMetricAlert(rule.aggregate) && (
+      {isCustomMetricAlert(rule.aggregate) && (
         <StyledLayoutBody>
           <MetricsBetaEndAlert style={{marginBottom: 0}} organization={organization} />
         </StyledLayoutBody>
@@ -254,14 +257,12 @@ export default function MetricDetailsBody({
 
           <ErrorMigrationWarning project={project} rule={rule} />
 
-          {/* TODO: add activation start/stop into chart */}
           <MetricChart
             api={api}
             rule={rule}
             incidents={incidents}
             anomalies={anomalies}
             timePeriod={timePeriod}
-            selectedIncident={selectedIncident}
             formattedAggregate={formattedAggregate}
             organization={organization}
             project={project}
@@ -272,7 +273,7 @@ export default function MetricDetailsBody({
           />
           <DetailWrapper>
             <ActivityWrapper>
-              <MetricHistory incidents={incidents} activations={rule.activations} />
+              <MetricHistory incidents={incidents} />
               {[Dataset.METRICS, Dataset.SESSIONS, Dataset.ERRORS].includes(dataset) && (
                 <RelatedIssues
                   organization={organization}
@@ -289,7 +290,7 @@ export default function MetricDetailsBody({
                   }
                 />
               )}
-              {dataset === Dataset.TRANSACTIONS && (
+              {[Dataset.TRANSACTIONS, Dataset.GENERIC_METRICS].includes(dataset) && (
                 <RelatedTransactions
                   organization={organization}
                   location={location}

@@ -20,9 +20,6 @@ export type Project = {
   digestsMinDelay: number;
   dynamicSamplingBiases: DynamicSamplingBias[] | null;
   environments: string[];
-  eventProcessing: {
-    symbolicationDegraded: boolean;
-  };
   features: string[];
   firstEvent: string | null;
   firstTransactionEvent: boolean;
@@ -30,6 +27,7 @@ export type Project = {
   hasAccess: boolean;
   hasCustomMetrics: boolean;
   hasFeedbacks: boolean;
+  hasFlags: boolean;
   hasInsightsAppStart: boolean;
   hasInsightsAssets: boolean;
   hasInsightsCaches: boolean;
@@ -67,6 +65,9 @@ export type Project = {
   verifySSL: boolean;
   builtinSymbolSources?: string[];
   defaultEnvironment?: string;
+  eventProcessing?: {
+    symbolicationDegraded?: boolean;
+  };
   hasUserReports?: boolean;
   highlightContext?: Record<string, string[]>;
   highlightPreset?: {
@@ -87,6 +88,7 @@ export type Project = {
   stats?: TimeseriesValue[];
   subjectPrefix?: string;
   symbolSources?: string;
+  tempestFetchScreenshots?: boolean;
   transactionStats?: TimeseriesValue[];
 } & AvatarProject;
 

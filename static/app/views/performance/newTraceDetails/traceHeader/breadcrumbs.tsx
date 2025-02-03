@@ -87,13 +87,6 @@ function getPerformanceBreadCrumbs(
     true
   );
 
-  if (view) {
-    crumbs.push({
-      label: DOMAIN_VIEW_BASE_TITLE,
-      to: undefined,
-    });
-  }
-
   crumbs.push({
     label: (view && DOMAIN_VIEW_TITLES[view]) || t('Performance'),
     to: getBreadCrumbTarget(performanceUrl, location.query, organization),
@@ -102,12 +95,8 @@ function getPerformanceBreadCrumbs(
   switch (location.query.tab) {
     case Tab.EVENTS:
       crumbs.push({
-        label: t('All Events'),
-        to: getBreadCrumbTarget(
-          `${transactionSummaryUrl}/events`,
-          location.query,
-          organization
-        ),
+        label: t('Transaction Summary'),
+        to: getBreadCrumbTarget(`${transactionSummaryUrl}`, location.query, organization),
       });
       break;
     case Tab.TAGS:
@@ -229,7 +218,11 @@ function getInsightsModuleBreadcrumbs(
     moduleName = TRACE_SOURCE_TO_MODULE[location.query.source] as RoutableModuleNames;
     crumbs.push({
       label: MODULE_TITLES[moduleName],
-      to: moduleURLBuilder(moduleName),
+      to: getBreadCrumbTarget(
+        `${moduleURLBuilder(moduleName, view)}/`,
+        location.query,
+        organization
+      ),
     });
   }
 

@@ -303,10 +303,8 @@ API_PUBLISH_STATUS_ALLOWLIST_DONT_MODIFY = {
         "PUT",
     },
     "/api/0/organizations/{organization_id_or_slug}/dashboards/{dashboard_id}/visit/": {"POST"},
-    "/api/0/organizations/{organization_id_or_slug}/shortids/{short_id}/": {"GET"},
     "/api/0/organizations/{organization_id_or_slug}/eventids/{event_id}/": {"GET"},
     "/api/0/organizations/{organization_id_or_slug}/data-scrubbing-selector-suggestions/": {"GET"},
-    "/api/0/organizations/{organization_id_or_slug}/slugs/": {"PUT"},
     "/api/0/organizations/{organization_id_or_slug}/access-requests/": {"GET", "PUT"},
     "/api/0/organizations/{organization_id_or_slug}/access-requests/{request_id}/": {
         "GET",
@@ -406,9 +404,6 @@ API_PUBLISH_STATUS_ALLOWLIST_DONT_MODIFY = {
     "/api/0/organizations/{organization_id_or_slug}/sessions/": {"GET"},
     "/api/0/organizations/{organization_id_or_slug}/releases/{version}/resolved/": {"GET"},
     "/api/0/organizations/{organization_id_or_slug}/request-project-creation/": {"POST"},
-    "/api/0/organizations/{organization_id_or_slug}/members/{member_id}/unreleased-commits/": {
-        "GET"
-    },
     "/api/0/organizations/{organization_id_or_slug}/members/{member_id}/teams/{team_id_or_slug}/": {
         "GET",
         "PUT",
