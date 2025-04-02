@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -87,7 +88,7 @@ const DrawerContext = createContext<DrawerContextType>({
   closeDrawer: () => {},
 });
 
-export function GlobalDrawer({children}) {
+export function GlobalDrawer({children}: any) {
   const location = useLocation();
   const [currentDrawerConfig, overwriteDrawerConfig] = useState<
     DrawerConfig | undefined
@@ -148,12 +149,20 @@ export function GlobalDrawer({children}) {
   });
 
   // Close the drawer when escape is pressed and options allow it.
-  const handleEscapePress = useCallback(() => {
-    if (currentDrawerConfig?.options?.closeOnEscapeKeypress ?? true) {
-      handleClose();
-    }
-  }, [currentDrawerConfig, handleClose]);
-  useHotkeys([{match: 'Escape', callback: handleEscapePress}], [handleEscapePress]);
+  const globalDrawerHotkeys = useMemo(() => {
+    return [
+      {
+        match: 'Escape',
+        callback: () => {
+          if (currentDrawerConfig?.options?.closeOnEscapeKeypress ?? true) {
+            handleClose();
+          }
+        },
+      },
+    ];
+  }, [currentDrawerConfig?.options?.closeOnEscapeKeypress, handleClose]);
+
+  useHotkeys(globalDrawerHotkeys);
 
   const renderedChild = currentDrawerConfig?.renderer
     ? currentDrawerConfig.renderer({

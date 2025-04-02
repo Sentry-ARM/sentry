@@ -1,9 +1,9 @@
 import {Fragment} from 'react';
 import styled from '@emotion/styled';
 
-import Tag from 'sentry/components/badge/tag';
-import {Button, LinkButton} from 'sentry/components/button';
 import ButtonBar from 'sentry/components/buttonBar';
+import {Tag} from 'sentry/components/core/badge/tag';
+import {Button, LinkButton} from 'sentry/components/core/button';
 import HotkeysLabel from 'sentry/components/hotkeysLabel';
 import LoadingIndicator from 'sentry/components/loadingIndicator';
 import {Overlay} from 'sentry/components/overlay';
@@ -20,6 +20,7 @@ import {SearchInvalidTag} from './searchInvalidTag';
 import type {SearchGroup, SearchItem, Shortcut} from './types';
 import {invalidTypes, ItemType} from './types';
 
+// @ts-expect-error TS(7023): 'getDropdownItemKey' implicitly has return type 'a... Remove this comment to see the full error message
 const getDropdownItemKey = (item: SearchItem) =>
   `${item.value || item.desc || item.title}-${
     item.children && item.children.length > 0 ? getDropdownItemKey(item.children[0]!) : ''
@@ -196,9 +197,9 @@ function HighlightedRestOfWords({
   isFirstWordHidden,
   hasSplit,
 }: HighlightedRestOfWordsProps) {
-  const remainingSubstr = !searchSubstring.includes(firstWord)
-    ? searchSubstring
-    : searchSubstring.slice(firstWord.length + 1);
+  const remainingSubstr = searchSubstring.includes(firstWord)
+    ? searchSubstring.slice(firstWord.length + 1)
+    : searchSubstring;
   const descIdx = combinedRestWords.indexOf(remainingSubstr);
 
   if (descIdx > -1) {
@@ -233,7 +234,7 @@ function ItemTitle({item, searchSubstring, isChild}: ItemTitleProps) {
 
   const fullWord = item.title;
 
-  const words = item.kind !== FieldKind.FUNCTION ? fullWord.split('.') : [fullWord];
+  const words = item.kind === FieldKind.FUNCTION ? [fullWord] : fullWord.split('.');
   const [firstWord, ...restWords] = words;
   const isFirstWordHidden = isChild;
 
@@ -400,13 +401,17 @@ function DropdownItem({
         className={`${isChild ? 'group-child' : ''} ${item.active ? 'active' : ''}`}
         data-test-id="search-autocomplete-item"
         onClick={
-          !isDisabled
-            ? item.type && invalidTypes.includes(item.type) && !!customInvalidTagMessage
+          isDisabled
+            ? undefined
+            : item.type && invalidTypes.includes(item.type) && !!customInvalidTagMessage
               ? undefined
-              : item.callback ?? onClick.bind(null, item.value, item)
-            : undefined
+              : (item.callback ?? onClick.bind(null, item.value, item))
         }
-        ref={element => item.active && element?.scrollIntoView?.({block: 'nearest'})}
+        ref={element => {
+          if (item.active && element) {
+            element.scrollIntoView?.({block: 'nearest'});
+          }
+        }}
         isChild={isChild}
         isDisabled={isDisabled}
       >

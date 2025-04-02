@@ -134,6 +134,8 @@ def timeseries_query(
             if len(base_builder.aggregates) != 1:
                 raise InvalidSearchQuery("Only one column can be selected for comparison queries")
             comp_query_params = snuba_params.copy()
+            assert comp_query_params.start is not None
+            assert comp_query_params.end is not None
             comp_query_params.start -= comparison_delta
             comp_query_params.end -= comparison_delta
             comparison_builder = ErrorsTimeseriesQueryBuilder(
@@ -155,6 +157,8 @@ def timeseries_query(
     with sentry_sdk.start_span(op="errors", name="timeseries.transform_results"):
         results = []
         for snql_query, result in zip(query_list, query_results):
+            assert snql_query.params.start is not None
+            assert snql_query.params.end is not None
             results.append(
                 {
                     "data": (
@@ -163,7 +167,7 @@ def timeseries_query(
                             snql_query.params.start,
                             snql_query.params.end,
                             rollup,
-                            "time",
+                            ["time"],
                             time_col_name="events.time",
                         )
                         if zerofill_results
@@ -177,9 +181,9 @@ def timeseries_query(
         col_name = base_builder.aggregates[0].alias
         # If we have two sets of results then we're doing a comparison queries. Divide the primary
         # results by the comparison results.
-        for result, cmp_result in zip(results[0]["data"], results[1]["data"]):
+        for ret_result, cmp_result in zip(results[0]["data"], results[1]["data"]):
             cmp_result_val = cmp_result.get(col_name, 0)
-            result["comparisonCount"] = cmp_result_val
+            ret_result["comparisonCount"] = cmp_result_val
 
     result = base_builder.process_results(results[0])
 
@@ -215,6 +219,7 @@ def top_events_timeseries(
     dataset: Dataset = Dataset.Discover,
     query_source: QuerySource | None = None,
     fallback_to_transactions: bool = False,
+    transform_alias_to_input_format: bool = False,
 ) -> dict[str, SnubaTSResult] | SnubaTSResult:
     """
     High-level API for doing arbitrary user timeseries queries for a limited number of top events
@@ -237,6 +242,9 @@ def top_events_timeseries(
     top_events - A dictionary with a 'data' key containing a list of dictionaries that
                     represent the top events matching the query. Useful when you have found
                     the top events earlier and want to save a query.
+    transform_alias_to_input_format - Whether aggregate columns should be returned in the originally
+                                    requested function format.
+
     """
     if top_events is None:
         with sentry_sdk.start_span(op="discover.errors", name="top_events.fetch_events"):
@@ -269,6 +277,7 @@ def top_events_timeseries(
         config=QueryBuilderConfig(
             functions_acl=functions_acl,
             skip_tag_resolution=True,
+            transform_alias_to_input_format=transform_alias_to_input_format,
         ),
     )
     if len(top_events["data"]) == limit and include_other:
@@ -356,6 +365,7 @@ def top_events_timeseries(
                         if zerofill_results
                         else item["data"]
                     ),
+                    "meta": result["meta"],
                     "order": item["order"],
                 },
                 snuba_params.start_date,

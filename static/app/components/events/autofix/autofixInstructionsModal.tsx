@@ -2,7 +2,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 import styled from '@emotion/styled';
 
 import type {ModalRenderProps} from 'sentry/actionCreators/modal';
-import {Button} from 'sentry/components/button';
+import {Button} from 'sentry/components/core/button';
 import Form from 'sentry/components/forms/form';
 import FormField from 'sentry/components/forms/formField';
 import {t} from 'sentry/locale';
@@ -34,7 +34,7 @@ export function AutofixInstructionsModal({
 
       <div>
         <FullSizeFieldGroup name="instruction" inline={false} flexibleControlStateSize>
-          {({id, name, onChange, onBlur, disabled, value}) => (
+          {({id, name, onChange, onBlur, disabled, value}: any) => (
             <FullSizeTextAreaField
               id={id}
               name={name}

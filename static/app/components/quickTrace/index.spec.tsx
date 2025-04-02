@@ -15,7 +15,7 @@ describe('Quick Trace', function () {
     organization = context.organization;
   };
 
-  function makeQuickTraceEvents(generation, {n = 1, parentId = null} = {}) {
+  function makeQuickTraceEvents(generation: number, {n = 1, parentId = null} = {}) {
     const events: QuickTraceEvent[] = [];
     for (let i = 0; i < n; i++) {
       const suffix = n > 1 ? `-${i}` : '';
@@ -42,7 +42,7 @@ describe('Quick Trace', function () {
     return events;
   }
 
-  function makeTransactionEventFixture(id) {
+  function makeTransactionEventFixture(id: string | number) {
     return {
       id: `e${id}`,
       type: 'transaction',
@@ -411,11 +411,10 @@ describe('Quick Trace', function () {
         makeTransactionHref('p4', 'e4', 't4'),
         makeTransactionHref('p5', 'e5', 't5'),
       ].forEach((target, i) => {
-        const linkNode = nodes[i]!.children[0];
         if (target) {
-          expect(linkNode).toHaveAttribute('href', target);
+          expect(nodes[i]?.parentNode).toHaveAttribute('href', target);
         } else {
-          expect(linkNode).not.toHaveAttribute('href');
+          expect(nodes[i]?.parentNode).not.toHaveAttribute('href');
         }
       });
     });

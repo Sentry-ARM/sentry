@@ -4,8 +4,9 @@ export const ALLOWED_WILDCARD_FIELDS = [
   'span.description',
   'span.domain',
   'span.status_code',
+  'log.body',
 ];
-export const EMPTY_OPTION_VALUE = '(empty)' as const;
+export const EMPTY_OPTION_VALUE = '(empty)';
 
 export enum TokenType {
   OPERATOR = 0,
@@ -155,7 +156,17 @@ export class MutableSearch {
         case TokenType.FILTER:
           if (token.value === '' || token.value === null) {
             formattedTokens.push(`${token.key}:""`);
-          } else if (/[\s\(\)\\"]/g.test(token.value)) {
+          } else if (
+            // Don't quote if it's already a properly formatted bracket expression
+            /^\[.*\]$/.test(token.value) ||
+            // Don't quote if it's already properly quoted
+            /^".*"$/.test(token.value)
+          ) {
+            formattedTokens.push(`${token.key}:${token.value}`);
+          } else if (
+            // Quote if contains spaces, parens, or quotes
+            /[\s\(\)\\"]/g.test(token.value)
+          ) {
             formattedTokens.push(`${token.key}:"${escapeDoubleQuotes(token.value)}"`);
           } else {
             formattedTokens.push(`${token.key}:${token.value}`);
@@ -305,7 +316,7 @@ export class MutableSearch {
     // to see if that open paren corresponds to a closed paren with one or fewer items inside.
     // If it does, delete those parens, and loop again until there are no more parens to delete.
     let parensToDelete: number[] = [];
-    const cleanParens = (_, idx: number) => !parensToDelete.includes(idx);
+    const cleanParens = (_: any, idx: number) => !parensToDelete.includes(idx);
     do {
       if (parensToDelete.length) {
         this.tokens = this.tokens.filter(cleanParens);

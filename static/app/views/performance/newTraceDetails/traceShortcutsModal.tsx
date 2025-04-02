@@ -4,7 +4,7 @@ import styled from '@emotion/styled';
 import tracingKeyboardShortcuts from 'sentry-images/spot/tracing-keyboard-shortcuts.svg';
 
 import {type ModalRenderProps, openModal} from 'sentry/actionCreators/modal';
-import {Button} from 'sentry/components/button';
+import {Button} from 'sentry/components/core/button';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
 import useOrganization from 'sentry/utils/useOrganization';
@@ -31,13 +31,13 @@ export function TraceShortcuts() {
   );
 }
 
-const KEYBOARD_SHORTCUTS: [string, string][] = [
+const KEYBOARD_SHORTCUTS: Array<[string, string]> = [
   ['\u2191 / \u2193', t('Navigate up or down')],
   ['\u2190 / \u2192', t('Collapse or expand')],
   [t('Shift') + ' + \u2191 / \u2193', t('Jump to first/last element')],
 ];
 
-const TIMELINE_SHORTCUTS: [string, string][] = [
+const TIMELINE_SHORTCUTS: Array<[string, string]> = [
   [t('Cmd / Ctrl + Scroll'), t('Zoom in/out at cursor')],
   [t('Shift + Scroll'), t('Scroll horizontally')],
   [t('Double click'), t('Zoom to fill')],

@@ -1,7 +1,7 @@
 import {css} from '@emotion/react';
 
-import ActorAvatar from 'sentry/components/avatar/actorAvatar';
-import AlertBadge from 'sentry/components/badge/alertBadge';
+import {ActorAvatar} from 'sentry/components/core/avatar/actorAvatar';
+import {AlertBadge} from 'sentry/components/core/badge/alertBadge';
 import AnalyticsProvider from 'sentry/components/devtoolbar/components/analyticsProvider';
 import Placeholder from 'sentry/components/placeholder';
 import TextOverflow from 'sentry/components/textOverflow';
@@ -98,16 +98,36 @@ function AlertListItem({item}: {item: Incident}) {
         `,
       ]}
     >
-      <div css={{gridArea: 'badge'}}>
+      <div
+        css={css`
+          grid-area: badge;
+        `}
+      >
         <AlertBadge status={item.status} isIssue={false} />
       </div>
 
-      <div css={[gridFlexEndCss, xSmallCss, {gridArea: 'time', color: 'var(--gray300)'}]}>
+      <div
+        css={[
+          gridFlexEndCss,
+          xSmallCss,
+          css`
+            grid-area: time;
+            color: var(--gray300);
+          `,
+        ]}
+      >
         <TimeSince date={item.dateStarted} unitStyle="extraShort" />
       </div>
 
       <AnalyticsProvider nameVal="item" keyVal="item">
-        <TextOverflow css={[smallCss, {gridArea: 'name'}]}>
+        <TextOverflow
+          css={[
+            smallCss,
+            css`
+              grid-area: name;
+            `,
+          ]}
+        >
           <SentryAppLink
             to={{
               url: alertDetailsLink({slug: organizationSlug} as Organization, item),

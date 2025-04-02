@@ -28,7 +28,7 @@ type Props = {
 type State = {
   error: boolean;
   loading: boolean;
-  mergedItems: Array<Fingerprint>;
+  mergedItems: Fingerprint[];
   query: string;
   mergedLinks?: string;
 };
@@ -63,13 +63,13 @@ class GroupMergedView extends Component<Props, State> {
     this.listener?.();
   }
 
-  onGroupingChange = ({mergedItems, mergedLinks, loading, error}) => {
+  onGroupingChange = ({mergedItems, mergedLinks, loading, error}: any) => {
     if (mergedItems) {
       this.setState({
         mergedItems,
         mergedLinks,
-        loading: typeof loading !== 'undefined' ? loading : false,
-        error: typeof error !== 'undefined' ? error : false,
+        loading: typeof loading === 'undefined' ? false : loading,
+        error: typeof error === 'undefined' ? false : error,
       });
     }
   };

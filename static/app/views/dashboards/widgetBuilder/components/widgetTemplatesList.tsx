@@ -1,13 +1,14 @@
-import {Fragment, useCallback, useState} from 'react';
+import {Fragment, useCallback, useEffect, useState} from 'react';
 import {useParams} from 'react-router-dom';
 import styled from '@emotion/styled';
 
 import {validateWidget} from 'sentry/actionCreators/dashboards';
 import {addErrorMessage} from 'sentry/actionCreators/indicator';
-import {Button} from 'sentry/components/button';
+import {Button} from 'sentry/components/core/button';
+import {getChartColorPalette} from 'sentry/constants/chartPalette';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
-import theme from 'sentry/utils/theme';
+import {trackAnalytics} from 'sentry/utils/analytics';
 import useApi from 'sentry/utils/useApi';
 import useOrganization from 'sentry/utils/useOrganization';
 import type {Widget} from 'sentry/views/dashboards/types';
@@ -35,6 +36,14 @@ function WidgetTemplatesList({
   const {widgetIndex} = useParams();
   const api = useApi();
 
+  useEffect(() => {
+    trackAnalytics('dashboards_views.widget_builder.templates.open', {
+      organization,
+    });
+    // We only want to track this once when the component is mounted
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const widgets = getTopNConvertedDefaultWidgets(organization);
 
   const handleSave = useCallback(
@@ -53,7 +62,7 @@ function WidgetTemplatesList({
   return (
     <Fragment>
       {widgets.map((widget, index) => {
-        const iconColor = theme.charts.getColorPalette(widgets.length - 2)?.[index]!;
+        const iconColor = getChartColorPalette(widgets.length - 2)?.[index]!;
 
         const Icon = getWidgetIcon(widget.displayType);
         const lastWidget = index === widgets.length - 1;
@@ -67,6 +76,11 @@ function WidgetTemplatesList({
                   type: BuilderStateAction.SET_STATE,
                   payload: convertWidgetToBuilderStateParams(widget),
                 });
+                trackAnalytics('dashboards_views.widget_builder.templates.selected', {
+                  title: widget.title,
+                  widget_type: widget.widgetType ?? '',
+                  organization,
+                });
               }}
             >
               <IconWrapper backgroundColor={iconColor}>
@@ -79,15 +93,38 @@ function WidgetTemplatesList({
                   <ButtonsWrapper>
                     <Button
                       size="sm"
-                      onClick={() => {
+                      onClick={e => {
+                        e.stopPropagation();
                         setOpenWidgetTemplates(false);
                         // reset preview when customizing templates
                         setIsPreviewDraggable(false);
+                        trackAnalytics(
+                          'dashboards_views.widget_builder.templates.customize',
+                          {
+                            title: widget.title,
+                            widget_type: widget.widgetType ?? '',
+                            organization,
+                          }
+                        );
                       }}
                     >
                       {t('Customize')}
                     </Button>
-                    <Button size="sm" onClick={() => handleSave(widget)}>
+                    <Button
+                      size="sm"
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleSave(widget);
+                        trackAnalytics(
+                          'dashboards_views.widget_builder.templates.add_to_dashboard',
+                          {
+                            title: widget.title,
+                            widget_type: widget.widgetType ?? '',
+                            organization,
+                          }
+                        );
+                      }}
+                    >
                       {t('Add to dashboard')}
                     </Button>
                   </ButtonsWrapper>

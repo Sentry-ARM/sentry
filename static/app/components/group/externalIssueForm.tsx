@@ -38,8 +38,8 @@ export default class ExternalIssueForm extends AbstractExternalIssueForm<Props, 
   submitSpan: Span | undefined;
   trackedLoadStatus = false;
 
-  constructor(props) {
-    super(props, {});
+  constructor(props: any) {
+    super(props);
     this.loadSpan = this.startSpan('load');
   }
 

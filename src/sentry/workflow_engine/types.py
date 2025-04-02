@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar
+from enum import IntEnum, StrEnum
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypedDict, TypeVar
 
 from sentry.types.group import PriorityLevel
 
 if TYPE_CHECKING:
+    from sentry.deletions.base import ModelRelation
     from sentry.eventstore.models import GroupEvent
     from sentry.eventstream.base import GroupState
+    from sentry.snuba.models import SnubaQueryEventType
     from sentry.workflow_engine.models import Action, Detector, Workflow
+    from sentry.workflow_engine.models.data_condition import Condition
 
 T = TypeVar("T")
 
@@ -43,6 +46,8 @@ class WorkflowJob(EventJob, total=False):
 
 
 class ActionHandler:
+    config_schema: ClassVar[dict[str, Any]]
+
     @staticmethod
     def execute(job: WorkflowJob, action: Action, detector: Detector) -> None:
         raise NotImplementedError
@@ -53,8 +58,46 @@ class DataSourceTypeHandler(Generic[T]):
     def bulk_get_query_object(data_sources) -> dict[int, T | None]:
         raise NotImplementedError
 
+    @staticmethod
+    def related_model(instance) -> list[ModelRelation]:
+        raise NotImplementedError
+
 
 class DataConditionHandler(Generic[T]):
+    class Type(StrEnum):
+        DETECTOR_TRIGGER = "detector_trigger"
+        WORKFLOW_TRIGGER = "workflow_trigger"
+        ACTION_FILTER = "action_filter"
+
+    class FilterGroup(StrEnum):
+        ISSUE_ATTRIBUTES = "issue_attributes"
+        FREQUENCY = "frequency"
+        EVENT_ATTRIBUTES = "event_attributes"
+
+    type: ClassVar[Type]
+    filter_group: ClassVar[FilterGroup]
+    comparison_json_schema: ClassVar[dict[str, Any]] = {}
+
     @staticmethod
     def evaluate_value(value: T, comparison: Any) -> DataConditionResult:
         raise NotImplementedError
+
+
+class DataConditionType(TypedDict):
+    id: int | None
+    comparison: int
+    type: Condition
+    condition_result: DetectorPriorityLevel
+    condition_group_id: int
+
+
+# TODO - Move this to snuba module
+class SnubaQueryDataSourceType(TypedDict):
+    query_type: int
+    dataset: str
+    query: str
+    aggregate: str
+    time_window: float
+    resolution: float
+    environment: str
+    event_types: list[SnubaQueryEventType]

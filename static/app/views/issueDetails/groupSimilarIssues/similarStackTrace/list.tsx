@@ -2,7 +2,7 @@ import {Fragment, useState} from 'react';
 import styled from '@emotion/styled';
 import type {Location} from 'history';
 
-import {Button} from 'sentry/components/button';
+import {Button} from 'sentry/components/core/button';
 import EmptyStateWarning from 'sentry/components/emptyStateWarning';
 import Pagination from 'sentry/components/pagination';
 import Panel from 'sentry/components/panels/panel';
@@ -19,13 +19,13 @@ import Item from './item';
 import Toolbar from './toolbar';
 
 type DefaultProps = {
-  filteredItems: Array<SimilarItem>;
+  filteredItems: SimilarItem[];
 };
 
 type Props = {
   groupId: string;
   hasSimilarityEmbeddingsFeature: boolean;
-  items: Array<SimilarItem>;
+  items: SimilarItem[];
   location: Location;
   onMerge: () => void;
   orgId: Organization['id'];

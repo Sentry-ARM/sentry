@@ -1,14 +1,17 @@
 /* eslint-disable no-alert */
 import {Fragment} from 'react';
 
-import {Button} from 'sentry/components/button';
+import {Button} from 'sentry/components/core/button';
 import SentryDocumentTitle from 'sentry/components/sentryDocumentTitle';
 import {ActionsProvider} from 'sentry/components/workflowEngine/layout/actions';
 import {BreadcrumbsProvider} from 'sentry/components/workflowEngine/layout/breadcrumbs';
 import EditLayout from 'sentry/components/workflowEngine/layout/edit';
+import {useWorkflowEngineFeatureGate} from 'sentry/components/workflowEngine/useWorkflowEngineFeatureGate';
 import {t} from 'sentry/locale';
 
 export default function DetectorEdit() {
+  useWorkflowEngineFeatureGate({redirect: true});
+
   return (
     <SentryDocumentTitle title={t('Edit Monitor')} noSuffix>
       <BreadcrumbsProvider crumb={{label: t('Monitors'), to: '/monitors'}}>

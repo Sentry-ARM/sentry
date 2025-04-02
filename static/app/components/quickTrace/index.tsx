@@ -1,5 +1,4 @@
 import {Component, Fragment} from 'react';
-import type {Theme} from '@emotion/react';
 import type {Location, LocationDescriptor} from 'history';
 
 import DropdownLink from 'sentry/components/dropdownLink';
@@ -34,6 +33,7 @@ import Projects from 'sentry/utils/projects';
 const FRONTEND_PLATFORMS: string[] = [...frontend, ...mobile];
 const BACKEND_PLATFORMS: string[] = [...backend, ...serverless];
 
+import Link from 'sentry/components/links/link';
 import type {Organization} from 'sentry/types/organization';
 import {generateLinkToEventInTraceView} from 'sentry/utils/discover/urls';
 
@@ -45,6 +45,7 @@ import {
   ErrorNodeContent,
   EventNode,
   ExternalDropdownLink,
+  type NodeType,
   QuickTraceContainer,
   QuickTraceValue,
   SectionSubtext,
@@ -80,7 +81,7 @@ export default function QuickTrace({
   errorDest,
   transactionDest,
 }: QuickTraceProps) {
-  let parsedQuickTrace;
+  let parsedQuickTrace: any;
   const traceSlug = event.contexts?.trace?.trace_id ?? '';
   const noTrace = <Fragment>{'\u2014'}</Fragment>;
   try {
@@ -339,7 +340,7 @@ function EventNodeSelector({
     event => event.performance_issues ?? []
   );
 
-  let type: keyof Theme['tag'] = nodeKey === 'current' ? 'black' : 'white';
+  let type: NodeType = nodeKey === 'current' ? 'black' : 'white';
 
   const hasErrors = errors.length > 0 || perfIssues.length > 0;
 
@@ -575,21 +576,28 @@ type EventNodeProps = {
   text: React.ReactNode;
   onClick?: (eventKey: any) => void;
   to?: LocationDescriptor;
-  type?: keyof Theme['tag'];
+  type?: NodeType;
 };
 
-function StyledEventNode({text, hoverText, to, onClick, type = 'white'}: EventNodeProps) {
+function StyledEventNode(props: EventNodeProps) {
+  const eventNodeProps = {
+    type: props.type ?? 'white',
+    onClick: props.onClick,
+  };
+
   return (
-    <Tooltip position="top" containerDisplayMode="inline-flex" title={hoverText}>
-      <EventNode
-        data-test-id="event-node"
-        type={type}
-        icon={null}
-        to={to}
-        onClick={onClick}
-      >
-        {text}
-      </EventNode>
+    <Tooltip position="top" containerDisplayMode="inline-flex" title={props.hoverText}>
+      {props.to ? (
+        <Link to={props.to}>
+          <EventNode data-test-id="event-node" {...eventNodeProps}>
+            {props.text}
+          </EventNode>
+        </Link>
+      ) : (
+        <EventNode data-test-id="event-node" {...eventNodeProps}>
+          {props.text}
+        </EventNode>
+      )}
     </Tooltip>
   );
 }

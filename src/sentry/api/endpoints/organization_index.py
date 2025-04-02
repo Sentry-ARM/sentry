@@ -2,7 +2,8 @@ import logging
 
 from django.conf import settings
 from django.db import IntegrityError
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Q
+from django.db.models.query import QuerySet
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.request import Request
@@ -15,8 +16,10 @@ from sentry.api.base import Endpoint, region_silo_endpoint
 from sentry.api.bases.organization import OrganizationPermission
 from sentry.api.paginator import DateTimePaginator, OffsetPaginator
 from sentry.api.serializers import serialize
-from sentry.api.serializers.models.organization import BaseOrganizationSerializer
-from sentry.api.serializers.types import OrganizationSerializerResponse
+from sentry.api.serializers.models.organization import (
+    BaseOrganizationSerializer,
+    OrganizationSerializerResponse,
+)
 from sentry.apidocs.constants import RESPONSE_FORBIDDEN, RESPONSE_NOT_FOUND, RESPONSE_UNAUTHORIZED
 from sentry.apidocs.examples.user_examples import UserExamples
 from sentry.apidocs.parameters import CursorQueryParam, OrganizationParams
@@ -37,6 +40,7 @@ from sentry.services.organization import (
 from sentry.services.organization.provisioning import organization_provisioning_service
 from sentry.signals import org_setup_complete, terms_accepted
 from sentry.users.services.user.service import user_service
+from sentry.utils.pagination_factory import PaginatorLike
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +99,7 @@ class OrganizationIndexEndpoint(Endpoint):
         """
         owner_only = request.GET.get("owner") in ("1", "true")
 
-        queryset = Organization.objects.distinct()
+        queryset: QuerySet[Organization] = Organization.objects.distinct()
 
         if request.auth and not request.user.is_authenticated:
             if hasattr(request.auth, "project"):
@@ -134,14 +138,16 @@ class OrganizationIndexEndpoint(Endpoint):
             tokens = tokenize_query(query)
             for key, value in tokens.items():
                 if key == "query":
-                    value = " ".join(value)
+                    query_value = " ".join(value)
                     user_ids = {
                         u.id
-                        for u in user_service.get_many_by_email(emails=[value], is_verified=False)
+                        for u in user_service.get_many_by_email(
+                            emails=[query_value], is_verified=False
+                        )
                     }
                     queryset = queryset.filter(
-                        Q(name__icontains=value)
-                        | Q(slug__icontains=value)
+                        Q(name__icontains=query_value)
+                        | Q(slug__icontains=query_value)
                         | Q(member_set__user_id__in=user_ids)
                     )
                 elif key == "slug":
@@ -177,6 +183,7 @@ class OrganizationIndexEndpoint(Endpoint):
                     queryset = queryset.none()
 
         sort_by = request.GET.get("sortBy")
+        paginator_cls: type[PaginatorLike]
         if sort_by == "members":
             queryset = queryset.annotate(member_count=Count("member_set"))
             order_by = "-member_count"
@@ -184,12 +191,6 @@ class OrganizationIndexEndpoint(Endpoint):
         elif sort_by == "projects":
             queryset = queryset.annotate(project_count=Count("project"))
             order_by = "-project_count"
-            paginator_cls = OffsetPaginator
-        elif sort_by == "events":
-            queryset = queryset.annotate(event_count=Sum("stats__events_24h")).filter(
-                stats__events_24h__isnull=False
-            )
-            order_by = "-event_count"
             paginator_cls = OffsetPaginator
         else:
             order_by = "-date_added"

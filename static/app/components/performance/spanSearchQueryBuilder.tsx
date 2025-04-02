@@ -37,12 +37,13 @@ interface SpanSearchQueryBuilderProps {
   projects?: PageFilters['projects'];
 }
 
-const getFunctionTags = (supportedAggregates?: AggregationKey[]) => {
+export const getFunctionTags = (supportedAggregates?: AggregationKey[]) => {
   if (!supportedAggregates?.length) {
     return {};
   }
 
   return supportedAggregates.reduce((acc, item) => {
+    // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
     acc[item] = {
       key: item,
       name: item,
@@ -155,6 +156,7 @@ interface EAPSpanSearchQueryBuilderProps extends SpanSearchQueryBuilderProps {
   numberTags: TagCollection;
   stringTags: TagCollection;
   getFilterTokenWarning?: (key: string) => React.ReactNode;
+  portalTarget?: HTMLElement | null;
   supportedAggregates?: AggregationKey[];
 }
 
@@ -169,6 +171,7 @@ export function EAPSpanSearchQueryBuilder({
   getFilterTokenWarning,
   supportedAggregates = [],
   projects,
+  portalTarget,
 }: EAPSpanSearchQueryBuilderProps) {
   const api = useApi();
   const organization = useOrganization();
@@ -246,6 +249,7 @@ export function EAPSpanSearchQueryBuilder({
       disallowUnsupportedFilters
       recentSearches={SavedSearchType.SPAN}
       showUnsubmittedIndicator
+      portalTarget={portalTarget}
     />
   );
 }

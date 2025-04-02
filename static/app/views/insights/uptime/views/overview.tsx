@@ -2,19 +2,24 @@ import {Fragment} from 'react';
 import styled from '@emotion/styled';
 import * as qs from 'query-string';
 
-import {LinkButton} from 'sentry/components/button';
+import {hasEveryAccess} from 'sentry/components/acl/access';
 import ButtonBar from 'sentry/components/buttonBar';
+import {LinkButton} from 'sentry/components/core/button';
+import EmptyMessage from 'sentry/components/emptyMessage';
 import * as Layout from 'sentry/components/layouts/thirds';
+import Link from 'sentry/components/links/link';
 import LoadingIndicator from 'sentry/components/loadingIndicator';
 import {DatePageFilter} from 'sentry/components/organizations/datePageFilter';
 import {EnvironmentPageFilter} from 'sentry/components/organizations/environmentPageFilter';
 import PageFilterBar from 'sentry/components/organizations/pageFilterBar';
 import {normalizeDateTimeParams} from 'sentry/components/organizations/pageFilters/parse';
 import {ProjectPageFilter} from 'sentry/components/organizations/projectPageFilter';
+import {PageHeadingQuestionTooltip} from 'sentry/components/pageHeadingQuestionTooltip';
 import Pagination from 'sentry/components/pagination';
+import Panel from 'sentry/components/panels/panel';
 import SearchBar from 'sentry/components/searchBar';
 import {IconAdd} from 'sentry/icons';
-import {t} from 'sentry/locale';
+import {t, tct} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
 import {useApiQuery} from 'sentry/utils/queryClient';
 import {decodeList, decodeScalar} from 'sentry/utils/queryString';
@@ -23,12 +28,15 @@ import useRouteAnalyticsParams from 'sentry/utils/routeAnalytics/useRouteAnalyti
 import {useLocation} from 'sentry/utils/useLocation';
 import {useNavigate} from 'sentry/utils/useNavigate';
 import useOrganization from 'sentry/utils/useOrganization';
-import type {UptimeAlert} from 'sentry/views/alerts/types';
+import useProjects from 'sentry/utils/useProjects';
+import {makeAlertsPathname} from 'sentry/views/alerts/pathnames';
+import type {UptimeRule} from 'sentry/views/alerts/rules/uptime/types';
 import {ModulePageProviders} from 'sentry/views/insights/common/components/modulePageProviders';
 import {BackendHeader} from 'sentry/views/insights/pages/backend/backendPageHeader';
 import {ModuleName} from 'sentry/views/insights/types';
 import {OwnerFilter} from 'sentry/views/monitors/components/ownerFilter';
 
+import {MODULE_DESCRIPTION, MODULE_DOC_LINK, MODULE_TITLE} from '../../uptime/settings';
 import {OverviewTimeline} from '../components/overviewTimeline';
 
 export default function UptimeOverview() {
@@ -36,6 +44,7 @@ export default function UptimeOverview() {
   const navigate = useNavigate();
   const location = useLocation();
   const project = decodeList(location.query?.project);
+  const {projects} = useProjects();
 
   function makeQueryKey() {
     const {query, environment, owner, cursor, sort, asc} = location.query;
@@ -58,35 +67,57 @@ export default function UptimeOverview() {
   }
 
   const {
-    data: uptimeList,
+    data: uptimeRules,
     getResponseHeader: uptimeListHeaders,
     isPending,
-  } = useApiQuery<UptimeAlert[]>(makeQueryKey(), {staleTime: 0});
+  } = useApiQuery<UptimeRule[]>(makeQueryKey(), {staleTime: 0});
 
   useRouteAnalyticsEventNames('uptime.page_viewed', 'Uptime: Page Viewed');
-  useRouteAnalyticsParams({empty_state: !uptimeList || uptimeList.length === 0});
+  useRouteAnalyticsParams({empty_state: !uptimeRules || uptimeRules.length === 0});
 
   const uptimeListPageLinks = uptimeListHeaders?.('Link');
 
   const handleSearch = (query: string) => {
-    const currentQuery = {...(location.query ?? {}), cursor: undefined};
+    const currentQuery = {...location.query, cursor: undefined};
     navigate({
       pathname: location.pathname,
       query: normalizeDateTimeParams({...currentQuery, query}),
     });
   };
 
+  const canCreateAlert =
+    hasEveryAccess(['alerts:write'], {organization}) ||
+    projects.some(p => hasEveryAccess(['alerts:write'], {project: p}));
+  const permissionTooltipText = tct(
+    'Ask your organization owner or manager to [settingsLink:enable alerts access] for you.',
+    {settingsLink: <Link to={`/settings/${organization.slug}`} />}
+  );
+
   return (
     <ModulePageProviders moduleName="uptime" pageTitle={t('Overview')}>
       <BackendHeader
         module={ModuleName.UPTIME}
+        headerTitle={
+          <Fragment>
+            {MODULE_TITLE}
+            <PageHeadingQuestionTooltip
+              docsUrl={MODULE_DOC_LINK}
+              title={MODULE_DESCRIPTION}
+            />
+          </Fragment>
+        }
         headerActions={
           <ButtonBar gap={1}>
             <LinkButton
               size="sm"
               priority="primary"
-              to={`/organizations/${organization.slug}/alerts/new/uptime/`}
+              to={makeAlertsPathname({
+                path: `/new/uptime/`,
+                organization,
+              })}
               icon={<IconAdd isCircled />}
+              disabled={!canCreateAlert}
+              title={canCreateAlert ? undefined : permissionTooltipText}
             >
               {t('Add Uptime Monitor')}
             </LinkButton>
@@ -121,13 +152,30 @@ export default function UptimeOverview() {
           </Filters>
           {isPending ? (
             <LoadingIndicator />
-          ) : uptimeList?.length ? (
+          ) : uptimeRules?.length ? (
             <Fragment>
-              <OverviewTimeline uptimeAlerts={uptimeList} />
+              <OverviewTimeline uptimeRules={uptimeRules} />
               {uptimeListPageLinks && <Pagination pageLinks={uptimeListPageLinks} />}
             </Fragment>
           ) : (
-            'LAnding thing here'
+            <Panel>
+              <EmptyMessage
+                title={t('The selected projects have no uptime monitors')}
+                action={
+                  <LinkButton
+                    size="sm"
+                    priority="primary"
+                    to={makeAlertsPathname({
+                      path: `/new/uptime/`,
+                      organization,
+                    })}
+                    icon={<IconAdd isCircled />}
+                  >
+                    {t('Add Uptime Monitor')}
+                  </LinkButton>
+                }
+              />
+            </Panel>
           )}
         </Layout.Main>
       </Layout.Body>

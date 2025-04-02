@@ -1,7 +1,6 @@
 import {Fragment} from 'react';
-import styled from '@emotion/styled';
 
-import {Alert} from 'sentry/components/alert';
+import {Alert} from 'sentry/components/core/alert';
 import ExternalLink from 'sentry/components/links/externalLink';
 import {StepType} from 'sentry/components/onboarding/gettingStartedDoc/step';
 import type {
@@ -123,6 +122,7 @@ if err := app.Listen(":3000"); err != nil {
   panic(err)
 };`;
 
+// @ts-expect-error TS(7006): Parameter 'params' implicitly has an 'any' type.
 const getBeforeSendSnippet = params => `
 sentry.Init(sentry.ClientOptions{
   Dsn: "${params.dsn.public}",
@@ -196,12 +196,12 @@ const onboarding: OnboardingConfig = {
               }
             )}
           </p>
-          <AlertWithoutMarginBottom>
+          <Alert type="info">
             {tct(
               "Keep in mind that [code:*sentry.Hub] won't be available in middleware attached before [code:sentryfiber]!",
               {code: <code />}
             )}
-          </AlertWithoutMarginBottom>
+          </Alert>
         </Fragment>
       ),
       configurations: [
@@ -249,7 +249,3 @@ const docs: Docs = {
 };
 
 export default docs;
-
-const AlertWithoutMarginBottom = styled(Alert)`
-  margin-bottom: 0;
-`;

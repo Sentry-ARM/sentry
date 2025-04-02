@@ -1,4 +1,5 @@
 import {Fragment} from 'react';
+import {css} from '@emotion/react';
 import styled from '@emotion/styled';
 import {QRCodeCanvas} from 'qrcode.react';
 
@@ -12,10 +13,10 @@ import {
   fetchOrganizationByMember,
   fetchOrganizations,
 } from 'sentry/actionCreators/organizations';
-import {Alert} from 'sentry/components/alert';
-import {Button} from 'sentry/components/button';
 import ButtonBar from 'sentry/components/buttonBar';
 import CircleIndicator from 'sentry/components/circleIndicator';
+import {Alert} from 'sentry/components/core/alert';
+import {Button} from 'sentry/components/core/button';
 import DeprecatedAsyncComponent from 'sentry/components/deprecatedAsyncComponent';
 import FieldGroup from 'sentry/components/forms/fieldGroup';
 import type {FormProps} from 'sentry/components/forms/form';
@@ -143,8 +144,7 @@ const getFields = ({
   return null;
 };
 
-type Props = DeprecatedAsyncComponent['props'] &
-  WithRouterProps<{authId: string}, {}> & {};
+type Props = DeprecatedAsyncComponent['props'] & WithRouterProps<{authId: string}>;
 
 type State = DeprecatedAsyncComponent['state'] & {
   authenticator: Authenticator | null;
@@ -227,10 +227,10 @@ class AccountSecurityEnroll extends DeprecatedAsyncComponent<Props, State> {
     // Only show loading when submitting OTP
     this.setState({sendingCode: !hasSentCode});
 
-    if (!hasSentCode) {
-      addLoadingMessage(t('Sending code to %s...', data.phone));
-    } else {
+    if (hasSentCode) {
       addLoadingMessage(t('Verifying OTP...'));
+    } else {
+      addLoadingMessage(t('Sending code to %s...', data.phone));
     }
 
     try {
@@ -253,13 +253,13 @@ class AccountSecurityEnroll extends DeprecatedAsyncComponent<Props, State> {
       return;
     }
 
-    if (!hasSentCode) {
+    if (hasSentCode) {
+      // OTP was accepted and SMS was added as a 2fa method
+      this.handleEnrollSuccess();
+    } else {
       // Just successfully finished sending OTP to user
       this.setState({hasSentCode: true, sendingCode: false});
       addSuccessMessage(t('Sent code to %s', data.phone));
-    } else {
-      // OTP was accepted and SMS was added as a 2fa method
-      this.handleEnrollSuccess();
     }
   };
 
@@ -286,7 +286,7 @@ class AccountSecurityEnroll extends DeprecatedAsyncComponent<Props, State> {
     }
 
     const data = {
-      ...(dataModel ?? {}),
+      ...dataModel,
       secret: this.state.authenticator.secret,
     };
 
@@ -414,9 +414,10 @@ class AccountSecurityEnroll extends DeprecatedAsyncComponent<Props, State> {
           )
           .map(field => [
             field.name,
-            typeof field !== 'function' ? field.defaultValue : '',
+            typeof field === 'function' ? '' : field.defaultValue,
           ])
           .reduce((acc, [name, value]) => {
+            // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
             acc[name] = value;
             return acc;
           }, {})
@@ -438,7 +439,9 @@ class AccountSecurityEnroll extends DeprecatedAsyncComponent<Props, State> {
                     : t('Authentication Method Inactive')
                 }
                 enabled={isActive}
-                css={{marginLeft: 6}}
+                css={css`
+                  margin-left: 6px;
+                `}
               />
             </Fragment>
           }
@@ -455,9 +458,11 @@ class AccountSecurityEnroll extends DeprecatedAsyncComponent<Props, State> {
         <TextBlock>{authenticator.description}</TextBlock>
 
         {authenticator.rotationWarning && authenticator.status === 'rotation' && (
-          <Alert type="warning" showIcon>
-            {authenticator.rotationWarning}
-          </Alert>
+          <Alert.Container>
+            <Alert type="warning" showIcon>
+              {authenticator.rotationWarning}
+            </Alert>
+          </Alert.Container>
         )}
 
         {!!authenticator.form?.length && (

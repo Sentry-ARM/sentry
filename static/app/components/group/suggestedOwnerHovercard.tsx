@@ -1,12 +1,13 @@
-import {Fragment, useState} from 'react';
+import {Fragment, useMemo, useState} from 'react';
+import {useTheme} from '@emotion/react';
 import styled from '@emotion/styled';
 import moment from 'moment-timezone';
 
 import {openInviteMembersModal} from 'sentry/actionCreators/modal';
-import {Alert} from 'sentry/components/alert';
-import ActorAvatar from 'sentry/components/avatar/actorAvatar';
-import {Button} from 'sentry/components/button';
 import CommitLink from 'sentry/components/commitLink';
+import {Alert} from 'sentry/components/core/alert';
+import {ActorAvatar} from 'sentry/components/core/avatar/actorAvatar';
+import {Button} from 'sentry/components/core/button';
 import {Divider, Hovercard} from 'sentry/components/hovercard';
 import Link from 'sentry/components/links/link';
 import Version from 'sentry/components/version';
@@ -18,7 +19,7 @@ import type {Commit} from 'sentry/types/integrations';
 import type {Organization} from 'sentry/types/organization';
 import type {Release} from 'sentry/types/release';
 import {defined} from 'sentry/utils';
-import theme from 'sentry/utils/theme';
+import {makeReleasesPathname} from 'sentry/views/releases/utils/pathnames';
 
 type Props = {
   /**
@@ -49,6 +50,7 @@ type Props = {
 };
 
 function SuggestedOwnerHovercard(props: Props) {
+  const theme = useTheme();
   const [commitsExpanded, setCommitsExpanded] = useState<boolean>(false);
   const [rulesExpanded, setRulesExpanded] = useState<boolean>(false);
 
@@ -61,6 +63,18 @@ function SuggestedOwnerHovercard(props: Props) {
     ],
     source: 'suggested_assignees',
   };
+
+  const tagColors = useMemo(
+    () =>
+      ({
+        url: theme.green200,
+        path: theme.purple300,
+        tag: theme.blue300,
+        codeowners: theme.pink300,
+        release: theme.pink200,
+      }) as const,
+    [theme]
+  );
 
   return (
     <StyledHovercard
@@ -120,7 +134,7 @@ function SuggestedOwnerHovercard(props: Props) {
               </Divider>
               <div>
                 <CommitReasonItem>
-                  <OwnershipTag tagType="release" />
+                  <OwnershipTag tagType="release" tagColors={tagColors} />
                   <ReleaseValue>
                     {tct('[actor] [verb] [commits] in [release]', {
                       actor: actor.name,
@@ -130,9 +144,10 @@ function SuggestedOwnerHovercard(props: Props) {
                           // Link to release commits
                           <Link
                             to={{
-                              pathname: `/organizations/${
-                                organization?.slug
-                              }/releases/${encodeURIComponent(release.version)}/commits/`,
+                              pathname: makeReleasesPathname({
+                                organization,
+                                path: `/${encodeURIComponent(release.version)}/commits/`,
+                              }),
                               query: {project: projectId},
                             }}
                           >
@@ -165,7 +180,7 @@ function SuggestedOwnerHovercard(props: Props) {
                   .slice(0, rulesExpanded ? rules.length : 3)
                   .map(([type, matched], i) => (
                     <RuleReasonItem key={i}>
-                      <OwnershipTag tagType={type} />
+                      <OwnershipTag tagType={type} tagColors={tagColors} />
                       <OwnershipValue>{matched}</OwnershipValue>
                     </RuleReasonItem>
                   ))}
@@ -188,14 +203,6 @@ function SuggestedOwnerHovercard(props: Props) {
   );
 }
 
-const tagColors = {
-  url: theme.green200,
-  path: theme.purple300,
-  tag: theme.blue300,
-  codeowners: theme.pink300,
-  release: theme.pink200,
-};
-
 const StyledHovercard = styled(Hovercard)`
   width: 400px;
 `;
@@ -205,7 +212,7 @@ const CommitIcon = styled(IconCommit)`
   flex-shrink: 0;
 `;
 
-const CommitMessage = styled(({message = '', date, ...props}) => (
+const CommitMessage = styled(({message = '', date, ...props}: any) => (
   <div {...props}>
     {message.split('\n')[0]}
     <CommitDate date={date} />
@@ -217,7 +224,7 @@ const CommitMessage = styled(({message = '', date, ...props}) => (
   hyphens: auto;
 `;
 
-const CommitDate = styled(({date, ...props}) => (
+const CommitDate = styled(({date, ...props}: any) => (
   <div {...props}>{moment(date).fromNow()}</div>
 ))`
   margin-top: ${space(0.5)};
@@ -236,8 +243,15 @@ const RuleReasonItem = styled('div')`
   gap: ${space(1)};
 `;
 
-const OwnershipTag = styled(({tagType, ...props}) => <div {...props}>{tagType}</div>)`
-  background: ${p => tagColors[p.tagType.indexOf('tags') === -1 ? p.tagType : 'tag']};
+const OwnershipTag = styled(
+  ({tagType, ...props}: {tagColors: Record<string, string>; tagType: string}) => (
+    <div {...props}>{tagType}</div>
+  )
+)`
+  background: ${p =>
+    p.tagColors[
+      p.tagType.indexOf('tags') === -1 ? (p.tagType as keyof typeof p.tagColors) : 'tag'
+    ]};
   color: ${p => p.theme.white};
   font-size: ${p => p.theme.fontSizeExtraSmall};
   padding: ${space(0.25)} ${space(0.5)};

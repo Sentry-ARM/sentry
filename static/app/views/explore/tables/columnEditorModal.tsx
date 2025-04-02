@@ -4,10 +4,10 @@ import {CSS} from '@dnd-kit/utilities';
 import styled from '@emotion/styled';
 
 import type {ModalRenderProps} from 'sentry/actionCreators/modal';
-import {Button, LinkButton} from 'sentry/components/button';
 import ButtonBar from 'sentry/components/buttonBar';
 import type {SelectKey, SelectOption} from 'sentry/components/compactSelect';
 import {CompactSelect} from 'sentry/components/compactSelect';
+import {Button, LinkButton} from 'sentry/components/core/button';
 import {SPAN_PROPS_DOCS_URL} from 'sentry/constants';
 import {IconAdd} from 'sentry/icons/iconAdd';
 import {IconDelete} from 'sentry/icons/iconDelete';
@@ -40,7 +40,7 @@ export function ColumnEditorModal({
   numberTags,
   stringTags,
 }: ColumnEditorModalProps) {
-  const tags: SelectOption<string>[] = useMemo(() => {
+  const tags: Array<SelectOption<string>> = useMemo(() => {
     const allTags = [
       ...columns
         .filter(
@@ -149,7 +149,7 @@ interface ColumnEditorRowProps {
   column: Column;
   onColumnChange: (column: string) => void;
   onColumnDelete: () => void;
-  options: SelectOption<string>[];
+  options: Array<SelectOption<string>>;
 }
 
 function ColumnEditorRow({

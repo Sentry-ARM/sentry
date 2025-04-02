@@ -1,7 +1,10 @@
-import type {MultiValueProps, OptionTypeBase} from 'react-select';
-import {components as selectComponents} from 'react-select';
 import styled from '@emotion/styled';
 
+import type {
+  MultiValueProps,
+  OptionTypeBase,
+} from 'sentry/components/forms/controls/reactSelectWrapper';
+import {components as selectComponents} from 'sentry/components/forms/controls/reactSelectWrapper';
 import LoadingIndicator from 'sentry/components/loadingIndicator';
 import {Tooltip} from 'sentry/components/tooltip';
 import {IconWarning} from 'sentry/icons';
@@ -26,7 +29,7 @@ function EmailValue<Option extends OptionTypeBase>({
       <Tooltip disabled={!error} title={error}>
         <EmailLabel>
           {children}
-          {!status.sent && !status.error && <SendingIndicator />}
+          {!status.sent && !status.error && <SendingIndicator hideMessage size={14} />}
           {status.error && <IconWarning legacySize="10px" />}
         </EmailLabel>
       </Tooltip>
@@ -50,10 +53,5 @@ const SendingIndicator = styled(LoadingIndicator)`
     border-width: 2px;
   }
 `;
-
-SendingIndicator.defaultProps = {
-  hideMessage: true,
-  size: 14,
-};
 
 export default EmailValue;

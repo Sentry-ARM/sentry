@@ -10,18 +10,20 @@ import {
   isJSProfile,
   isSampledProfile,
   isSchema,
+  isSentryAndroidContinuousProfileChunk,
   isSentryContinuousProfile,
   isSentryContinuousProfileChunk,
   isSentrySampledProfile,
 } from '../guards/profile';
 
-import {ContinuousProfile} from './continuousProfile';
+import {ContinuousProfile, minTimestampInChunk} from './continuousProfile';
 import {EventedProfile} from './eventedProfile';
 import {JSSelfProfile} from './jsSelfProfile';
 import type {Profile} from './profile';
 import {SampledProfile} from './sampledProfile';
 import {SentrySampledProfile} from './sentrySampledProfile';
 import {
+  createAndroidContinuousProfileFrameIndex,
   createContinuousProfileFrameIndex,
   createFrameIndex,
   createSentrySampleProfileFrameIndex,
@@ -67,6 +69,15 @@ export function importProfile(
     try {
       if (isSentryContinuousProfileChunk(input)) {
         scope.setTag('profile.type', 'sentry-continuous');
+        if (isSentryAndroidContinuousProfileChunk(input)) {
+          return importAndroidContinuousProfileChunk(input, traceID, {
+            span,
+            type,
+            frameFilter,
+            activeThreadId,
+            continuous: true,
+          });
+        }
         return importSentryContinuousProfileChunk(input, traceID, {
           span,
           type,
@@ -135,8 +146,7 @@ function importSentrySampledProfile(
     Profiling.SentrySampledProfile['profile']['samples']
   > = {};
 
-  for (let i = 0; i < input.profile.samples.length; i++) {
-    const sample = input.profile.samples[i]!;
+  for (const sample of input.profile.samples) {
     if (!samplesByThread[sample.thread_id]) {
       samplesByThread[sample.thread_id] = [];
     }
@@ -242,47 +252,153 @@ export function importSchema(
   };
 }
 
-export function importSentryContinuousProfileChunk(
-  input: Readonly<Profiling.SentryContinousProfileChunk>,
+export function eventedProfileToSampledProfile(
+  profileTimestamp: number,
+  input: ReadonlyArray<Readonly<Profiling.EventedProfile>>
+): Pick<
+  Readonly<Profiling.SentryContinousProfileChunk>['profile'],
+  'samples' | 'stacks' | 'thread_metadata'
+> {
+  const stacks: Profiling.SentrySampledProfile['profile']['stacks'] = [];
+  const samples: Profiling.SentrySampledProfileChunkSample[] = [];
+  const thread_metadata: Profiling.SentrySampledProfile['profile']['thread_metadata'] =
+    {};
+
+  for (const profile of input) {
+    let stackId = 0;
+    const stack: number[] = [];
+
+    thread_metadata[profile.threadID] = {
+      name: profile.name,
+    };
+
+    stack.push(profile.events[0]!.frame);
+    samples.push({
+      stack_id: stackId,
+      thread_id: String(profile.threadID),
+      timestamp: profileTimestamp + profile.events[0]!.at * 1e-9,
+    });
+    stacks[stackId] = stack.slice().reverse();
+    stackId++;
+
+    for (let i = 1; i < profile.events.length; i++) {
+      const current = profile.events[i]!;
+      const previous = profile.events[i - 1] ?? current;
+
+      if (current.type === 'O') {
+        stack.push(current.frame);
+      } else if (current.type === 'C') {
+        const poppedFrame = stack.pop();
+
+        if (poppedFrame === undefined) {
+          throw new Error('Stack underflow');
+        }
+        if (poppedFrame !== current.frame) {
+          throw new Error('Stack mismatch');
+        }
+      } else {
+        throw new TypeError('Unknown event type, expected O or C, got ' + current.type);
+      }
+
+      if (current.at !== previous.at) {
+        samples.push({
+          stack_id: stackId,
+          thread_id: String(profile.threadID),
+          timestamp: profileTimestamp + current.at * 1e-9,
+        });
+
+        stacks[stackId] = stack.slice().reverse();
+        stackId++;
+      }
+    }
+
+    if (stack.length > 0) {
+      samples.push({
+        stack_id: stackId,
+        thread_id: String(profile.threadID),
+        timestamp:
+          profileTimestamp + profile.events[profile.events.length - 1]!.at * 1e-9,
+      });
+      stacks[stackId] = stack.slice().reverse();
+      stackId++;
+    }
+  }
+
+  return {
+    samples,
+    stacks,
+    thread_metadata,
+  };
+}
+
+export function importAndroidContinuousProfileChunk(
+  input: Profiling.SentryAndroidContinuousProfileChunk,
   traceID: string,
   options: ImportOptions
 ): ProfileGroup {
-  const frameIndex = createContinuousProfileFrameIndex(
-    input.profile.frames,
-    input.platform
+  const frameIndex = createAndroidContinuousProfileFrameIndex(
+    input.shared.frames,
+    input.metadata.platform
   );
+
+  const frames: Profiling.SentrySampledProfileFrame[] = [];
+  for (const frame of input.shared.frames) {
+    frames.push({
+      in_app: frame.is_application ?? false,
+      filename: frame.file,
+      abs_path: frame.path,
+      module: frame.module,
+      package: frame.package,
+      column: frame.columnNumber ?? frame?.col ?? frame?.column,
+      symbol: frame.symbol,
+      lineno: frame.lineNumber,
+      colno: frame.columnNumber,
+      function: frame.name,
+    });
+  }
 
   const samplesByThread: Record<
     string,
     Profiling.SentryContinousProfileChunk['profile']['samples']
   > = {};
 
-  let firstTimestamp: number | null = null;
+  if (!input.metadata.timestamp) {
+    throw new TypeError(
+      'No timestamp found in metadata, typestamp is required to render continuous profiles'
+    );
+  }
+  const profileTimestampInSeconds = new Date(input.metadata.timestamp).getTime() * 1e-3;
 
-  for (let i = 0; i < input.profile.samples.length; i++) {
-    const sample = input.profile.samples[i]!;
+  const convertedProfile = eventedProfileToSampledProfile(
+    profileTimestampInSeconds,
+    input.profiles
+  );
 
-    if (!defined(firstTimestamp) || firstTimestamp > sample.timestamp) {
-      firstTimestamp = sample.timestamp;
-    }
+  const minTimestamp = minTimestampInChunk(
+    {...convertedProfile, frames},
+    input.measurements ?? {}
+  );
 
+  for (const sample of convertedProfile.samples) {
     if (!samplesByThread[sample.thread_id]) {
       samplesByThread[sample.thread_id] = [];
     }
     samplesByThread[sample.thread_id]!.push(sample);
   }
 
-  for (const key in samplesByThread) {
-    samplesByThread[key]!.sort((a, b) => a.timestamp - b.timestamp);
+  const profiles: ContinuousProfile[] = [];
+  let activeProfileIndex = input.activeProfileIndex ?? 0;
+
+  if (options.activeThreadId === undefined) {
+    options.activeThreadId = String(input.profiles[activeProfileIndex]?.threadID);
   }
 
-  const profiles: ContinuousProfile[] = [];
-  let activeProfileIndex = 0;
-
   for (const key in samplesByThread) {
+    samplesByThread[key]!.sort((a, b) => a.timestamp - b.timestamp);
+
     const profile: Profiling.ContinuousProfile = {
-      ...input,
-      ...input.profile,
+      ...convertedProfile,
+      frames,
       samples: samplesByThread[key]!,
     };
 
@@ -295,6 +411,7 @@ export function importSentryContinuousProfileChunk(
         options.span,
         () =>
           ContinuousProfile.FromProfile(profile, frameIndex, {
+            minTimestamp,
             type: options.type,
             frameFilter: options.frameFilter,
           }),
@@ -315,7 +432,81 @@ export function importSentryContinuousProfileChunk(
     profiles,
     measurements: measurementsFromContinuousMeasurements(
       input.measurements ?? {},
-      firstTimestamp
+      minTimestamp
+    ),
+    metadata: {
+      platform: input.metadata.platform,
+      projectID: input.metadata.projectID,
+    },
+  };
+}
+
+export function importSentryContinuousProfileChunk(
+  input: Readonly<Profiling.SentryContinousProfileChunk>,
+  traceID: string,
+  options: ImportOptions
+): ProfileGroup {
+  const frameIndex = createContinuousProfileFrameIndex(
+    input.profile.frames,
+    input.platform
+  );
+
+  const samplesByThread: Record<
+    string,
+    Profiling.SentryContinousProfileChunk['profile']['samples']
+  > = {};
+
+  const minTimestamp = minTimestampInChunk(input.profile, input.measurements);
+
+  for (const sample of input.profile.samples) {
+    if (!samplesByThread[sample.thread_id]) {
+      samplesByThread[sample.thread_id] = [];
+    }
+    samplesByThread[sample.thread_id]!.push(sample);
+  }
+
+  const profiles: ContinuousProfile[] = [];
+  let activeProfileIndex = 0;
+
+  for (const key in samplesByThread) {
+    samplesByThread[key]!.sort((a, b) => a.timestamp - b.timestamp);
+    const profile: Profiling.ContinuousProfile = {
+      ...input,
+      ...input.profile,
+      samples: samplesByThread[key]!,
+    };
+
+    if (options.activeThreadId && key === options.activeThreadId) {
+      activeProfileIndex = profiles.length;
+    }
+
+    profiles.push(
+      wrapWithSpan(
+        options.span,
+        () =>
+          ContinuousProfile.FromProfile(profile, frameIndex, {
+            minTimestamp,
+            type: options.type,
+            frameFilter: options.frameFilter,
+          }),
+        {
+          op: 'profile.import',
+          description: 'continuous',
+        }
+      )
+    );
+  }
+
+  return {
+    traceID,
+    name: '',
+    type: 'continuous',
+    transactionID: null,
+    activeProfileIndex,
+    profiles,
+    measurements: measurementsFromContinuousMeasurements(
+      input.measurements ?? {},
+      minTimestamp
     ),
     metadata: {
       platform: input.platform,
@@ -326,27 +517,19 @@ export function importSentryContinuousProfileChunk(
 
 function measurementsFromContinuousMeasurements(
   continuousMeasurements: Profiling.ContinuousMeasurements,
-  firstTimestamp: number | null
+  minTimestamp: number | null
 ): Profiling.Measurements {
-  for (const continuousMeasurement of Object.values(continuousMeasurements)) {
-    for (const value of continuousMeasurement.values) {
-      if (!defined(firstTimestamp) || firstTimestamp > value.timestamp) {
-        firstTimestamp = value.timestamp;
-      }
-    }
-  }
-
   // couldn't find any timestamps so there must not be any measurements
-  if (!defined(firstTimestamp)) {
+  if (!defined(minTimestamp)) {
     return {};
   }
 
-  const measurements = {};
+  const measurements: Profiling.Measurements = {};
 
   for (const [key, continuousMeasurement] of Object.entries(continuousMeasurements)) {
     measurements[key] = measurementFromContinousMeasurement(
       continuousMeasurement,
-      firstTimestamp
+      minTimestamp
     );
   }
 
@@ -382,14 +565,25 @@ function importSingleProfile(
   {span, type, frameFilter, profileIds}: ImportOptions
 ): Profile {
   if (isSentryContinuousProfile(profile)) {
+    const minTimestamp = minTimestampInChunk(profile);
+
     // In some cases, the SDK may return spans as undefined and we dont want to throw there.
     if (!span) {
-      return ContinuousProfile.FromProfile(profile, frameIndex, {type, frameFilter});
+      return ContinuousProfile.FromProfile(profile, frameIndex, {
+        minTimestamp,
+        type,
+        frameFilter,
+      });
     }
 
     return wrapWithSpan(
       span,
-      () => ContinuousProfile.FromProfile(profile, frameIndex, {type, frameFilter}),
+      () =>
+        ContinuousProfile.FromProfile(profile, frameIndex, {
+          minTimestamp,
+          type,
+          frameFilter,
+        }),
       {
         op: 'profile.import',
         description: 'continuous-profile',
@@ -472,7 +666,8 @@ const tryParseInputString: JSONParser = input => {
 
 type JSONParser = (input: string) => [any, null] | [null, Error];
 
-const TRACE_JSON_PARSERS: ((string) => ReturnType<JSONParser>)[] = [
+// @ts-expect-error TS(7051): Parameter has a name but no type. Did you mean 'ar... Remove this comment to see the full error message
+const TRACE_JSON_PARSERS: Array<(string) => ReturnType<JSONParser>> = [
   (input: string) => tryParseInputString(input),
   (input: string) => tryParseInputString(input + ']'),
 ];

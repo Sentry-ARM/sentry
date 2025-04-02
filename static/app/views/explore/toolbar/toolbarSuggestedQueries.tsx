@@ -1,7 +1,8 @@
 import {useMemo} from 'react';
 import styled from '@emotion/styled';
 
-import Tag from 'sentry/components/badge/tag';
+import {Tag} from 'sentry/components/core/badge/tag';
+import Link from 'sentry/components/links/link';
 import Panel from 'sentry/components/panels/panel';
 import {ALL_ACCESS_PROJECTS} from 'sentry/constants/pageFilters';
 import {
@@ -84,7 +85,9 @@ function ToolbarSuggestedQueriesInner({dismiss}: ToolbarSuggestedQueriesInnerPro
       PlatformCategory.MOBILE,
       PlatformCategory.BACKEND,
     ]
+      // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
       .filter(k => counters[k] > 0)
+      // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
       .sort((a, b) => counters[b] - counters[a]);
 
     return getSuggestedQueries(platforms);
@@ -131,9 +134,12 @@ function SuggestedQueryLink({suggestedQuery}: SuggestedQueryLinkProps) {
   );
 
   return (
-    <Tag to={target} icon={null} type="info">
-      {suggestedQuery.title}
-    </Tag>
+    <Link to={target}>
+      {/* @TODO(jonasbadalic): this used to set icon={null}, which was actually being ignored internally as passing a to prop
+       * was causing the tag to always render a IconOpen. If IconOpen is required, it can be passed manually via icon={<IconOpen />}
+       */}
+      <Tag type="info">{suggestedQuery.title}</Tag>
+    </Link>
   );
 }
 
@@ -337,5 +343,5 @@ const SuggestedQueriesContainer = styled('div')`
   display: flex;
   flex-wrap: wrap;
   gap: ${space(1)};
-  margin-top: ${space(2)};
+  margin-top: ${space(1)};
 `;

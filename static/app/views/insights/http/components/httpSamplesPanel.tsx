@@ -1,8 +1,8 @@
 import {Fragment} from 'react';
 import styled from '@emotion/styled';
 
-import {Button} from 'sentry/components/button';
 import {CompactSelect} from 'sentry/components/compactSelect';
+import {Button} from 'sentry/components/core/button';
 import {DrawerHeader} from 'sentry/components/globalDrawer/components';
 import {SpanSearchQueryBuilder} from 'sentry/components/performance/spanSearchQueryBuilder';
 import {SegmentedControl} from 'sentry/components/segmentedControl';
@@ -99,7 +99,7 @@ export function HTTPSamplesPanel() {
     ? [query.domain, query.transactionMethod, query.transaction].filter(Boolean).join(':')
     : undefined;
 
-  const handlePanelChange = newPanelName => {
+  const handlePanelChange = (newPanelName: any) => {
     trackAnalytics('performance_views.sample_spans.filter_updated', {
       filter: 'panel',
       new_state: newPanelName,
@@ -115,7 +115,7 @@ export function HTTPSamplesPanel() {
     });
   };
 
-  const handleResponseCodeClassChange = newResponseCodeClass => {
+  const handleResponseCodeClassChange = (newResponseCodeClass: any) => {
     trackAnalytics('performance_views.sample_spans.filter_updated', {
       filter: 'status_code',
       new_state: newResponseCodeClass.value,
@@ -256,7 +256,7 @@ export function HTTPSamplesPanel() {
         SpanIndexedField.PROJECT,
         SpanIndexedField.TRACE,
         SpanIndexedField.TRANSACTION_ID,
-        SpanIndexedField.ID,
+        SpanIndexedField.SPAN_ID,
         SpanIndexedField.TIMESTAMP,
         SpanIndexedField.SPAN_DESCRIPTION,
         SpanIndexedField.RESPONSE_CODE,
@@ -348,7 +348,7 @@ export function HTTPSamplesPanel() {
                 value={domainTransactionMetrics?.[0]?.['sum(span.self_time)']}
                 unit={DurationUnit.MILLISECOND}
                 tooltip={getTimeSpentExplanation(
-                  domainTransactionMetrics?.[0]!?.['time_spent_percentage()'],
+                  domainTransactionMetrics?.[0]?.['time_spent_percentage()']!,
                   'http.client'
                 )}
                 isLoading={areDomainTransactionMetricsFetching}

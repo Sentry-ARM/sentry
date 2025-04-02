@@ -1,8 +1,9 @@
 import {Fragment} from 'react';
+import {css} from '@emotion/react';
 import styled from '@emotion/styled';
 
-import AlertLink from 'sentry/components/alertLink';
-import {Button} from 'sentry/components/button';
+import {AlertLink} from 'sentry/components/core/alert/alertLink';
+import {Button} from 'sentry/components/core/button';
 import ExternalLink from 'sentry/components/links/externalLink';
 import Link from 'sentry/components/links/link';
 import LinkWithConfirmation from 'sentry/components/links/linkWithConfirmation';
@@ -72,15 +73,16 @@ function OrganizationApiKeysList({
         )}
       </TextBlock>
 
-      <AlertLink to="/settings/account/api/auth-tokens/" priority="info">
-        {tct(
-          'Until Sentry supports OAuth, you might want to switch to using [tokens:User Auth Tokens] instead.',
-          {
-            tokens: <u />,
-          }
-        )}
-      </AlertLink>
-
+      <AlertLink.Container>
+        <AlertLink to="/settings/account/api/auth-tokens/" type="info">
+          {tct(
+            'Until Sentry supports OAuth, you might want to switch to using [tokens:User Auth Tokens] instead.',
+            {
+              tokens: <u />,
+            }
+          )}
+        </AlertLink>
+      </AlertLink.Container>
       <PanelTable
         isLoading={loading}
         isEmpty={!hasKeys}
@@ -106,7 +108,13 @@ function OrganizationApiKeysList({
                   message={t('Are you sure you want to remove this API key?')}
                   title={t('Remove API Key?')}
                 >
-                  <IconDelete size="xs" css={{position: 'relative', top: '2px'}} />
+                  <IconDelete
+                    size="xs"
+                    css={css`
+                      position: relative;
+                      top: 2px;
+                    `}
+                  />
                 </LinkWithConfirmation>
               </Cell>
             </Fragment>

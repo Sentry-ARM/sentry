@@ -44,6 +44,7 @@ from sentry.backup.scopes import ExportScope
 from sentry.backup.validate import validate
 from sentry.data_secrecy.models import DataSecrecyWaiver
 from sentry.db.models.paranoia import ParanoidModel
+from sentry.explore.models import ExploreSavedQuery, ExploreSavedQueryProject
 from sentry.incidents.models.incident import (
     IncidentActivity,
     IncidentSnapshot,
@@ -73,7 +74,9 @@ from sentry.models.dashboard_widget import (
 from sentry.models.dynamicsampling import CustomDynamicSamplingRule
 from sentry.models.groupassignee import GroupAssignee
 from sentry.models.groupbookmark import GroupBookmark
-from sentry.models.groupsearchview import GroupSearchView
+from sentry.models.groupsearchview import GroupSearchView, GroupSearchViewProject
+from sentry.models.groupsearchviewlastvisited import GroupSearchViewLastVisited
+from sentry.models.groupsearchviewstarred import GroupSearchViewStarred
 from sentry.models.groupseen import GroupSeen
 from sentry.models.groupshare import GroupShare
 from sentry.models.groupsubscription import GroupSubscription
@@ -83,6 +86,7 @@ from sentry.models.options.project_template_option import ProjectTemplateOption
 from sentry.models.organization import Organization
 from sentry.models.organizationaccessrequest import OrganizationAccessRequest
 from sentry.models.organizationmember import InviteStatus, OrganizationMember
+from sentry.models.organizationmemberinvite import OrganizationMemberInvite
 from sentry.models.orgauthtoken import OrgAuthToken
 from sentry.models.project import Project
 from sentry.models.projectownership import ProjectOwnership
@@ -114,7 +118,6 @@ from sentry.utils import json
 from sentry.workflow_engine.models import (
     Action,
     AlertRuleDetector,
-    AlertRuleTriggerDataCondition,
     AlertRuleWorkflow,
     DataConditionGroup,
 )
@@ -430,6 +433,13 @@ class ExhaustiveFixtures(Fixtures):
                     inviter_id=inviter.id,
                     invite_status=InviteStatus.REQUESTED_TO_BE_INVITED.value,
                 )
+                OrganizationMemberInvite.objects.create(
+                    organization_id=org.id,
+                    role="member",
+                    email=email,
+                    inviter_id=inviter.id,
+                    invite_status=InviteStatus.REQUESTED_TO_BE_INVITED.value,
+                )
         if accepted_invites:
             for inviter, users in accepted_invites.items():
                 for user in users:
@@ -520,7 +530,6 @@ class ExhaustiveFixtures(Fixtures):
         alert.user_id = owner_id
         alert.save()
         trigger = self.create_alert_rule_trigger(alert_rule=alert)
-        assert alert.snuba_query is not None
         self.create_alert_rule_trigger_action(alert_rule_trigger=trigger)
 
         # Incident*
@@ -613,7 +622,7 @@ class ExhaustiveFixtures(Fixtures):
 
         # Group*
         group = self.create_group(project=project)
-        GroupSearchView.objects.create(
+        group_search_view = GroupSearchView.objects.create(
             name=f"View 1 for {slug}",
             user_id=owner_id,
             organization=org,
@@ -621,6 +630,23 @@ class ExhaustiveFixtures(Fixtures):
             query_sort="date",
             position=0,
         )
+        GroupSearchViewProject.objects.create(
+            group_search_view=group_search_view,
+            project=project,
+        )
+        GroupSearchViewLastVisited.objects.create(
+            organization=org,
+            user_id=owner_id,
+            group_search_view=group_search_view,
+            last_visited=timezone.now(),
+        )
+        GroupSearchViewStarred.objects.create(
+            organization=org,
+            user_id=owner_id,
+            group_search_view=group_search_view,
+            position=0,
+        )
+
         Activity.objects.create(
             project=project,
             group=group,
@@ -658,12 +684,6 @@ class ExhaustiveFixtures(Fixtures):
             condition_group=notification_condition_group,
         )
 
-        data_condition = self.create_data_condition(
-            comparison=75,
-            condition_result=True,
-            condition_group=notification_condition_group,
-        )
-
         self.create_workflow_data_condition_group(
             workflow=workflow, condition_group=notification_condition_group
         )
@@ -689,9 +709,6 @@ class ExhaustiveFixtures(Fixtures):
 
         AlertRuleDetector.objects.create(detector=detector, alert_rule=alert)
         AlertRuleWorkflow.objects.create(workflow=workflow, alert_rule=alert)
-        AlertRuleTriggerDataCondition.objects.create(
-            alert_rule_trigger=trigger, data_condition=data_condition
-        )
         ActionGroupStatus.objects.create(action=send_notification_action, group=group)
 
         TempestCredentials.objects.create(
@@ -701,6 +718,18 @@ class ExhaustiveFixtures(Fixtures):
             client_secret="test_client_secret",
             message="test_message",
             latest_fetched_item_id="test_latest_fetched_item_id",
+        )
+
+        explore_saved_query = ExploreSavedQuery.objects.create(
+            organization=org,
+            created_by_id=owner_id,
+            name="saved query",
+            query={"query": "test_query"},
+        )
+
+        ExploreSavedQueryProject.objects.create(
+            project=project,
+            explore_saved_query=explore_saved_query,
         )
 
         return org

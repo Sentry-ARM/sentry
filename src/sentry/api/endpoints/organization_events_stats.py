@@ -113,6 +113,8 @@ ALLOWED_EVENTS_STATS_REFERRERS: set[str] = {
     Referrer.API_PERFORMANCE_SPAN_SUMMARY_DURATION_CHART.value,
     Referrer.API_PERFORMANCE_SPAN_SUMMARY_THROUGHPUT_CHART.value,
     Referrer.API_PERFORMANCE_SPAN_SUMMARY_TRANSACTION_THROUGHPUT_CHART.value,
+    Referrer.API_EXPLORE_COMPARE_SERIES.value,
+    Referrer.API_PERFORMANCE_BROWSER_WEB_VITALS_TIMESERIES_SCORES.value,
 }
 
 
@@ -129,7 +131,6 @@ class OrganizationEventsStatsEndpoint(OrganizationEventsV2EndpointBase):
     publish_status = {
         "GET": ApiPublishStatus.EXPERIMENTAL,
     }
-    sunba_methods = ["GET"]
 
     def get_features(
         self, organization: Organization, request: Request
@@ -184,8 +185,6 @@ class OrganizationEventsStatsEndpoint(OrganizationEventsV2EndpointBase):
 
     def get(self, request: Request, organization: Organization) -> Response:
         query_source = self.get_request_source(request)
-
-        transform_alias_to_input_format = request.GET.get("transformAliasToInputFormat") == "1"
 
         with sentry_sdk.start_span(op="discover.endpoint", name="filter_params") as span:
             span.set_data("organization", organization)
@@ -277,7 +276,11 @@ class OrganizationEventsStatsEndpoint(OrganizationEventsV2EndpointBase):
             return Response({"detail": f"Metric type must be one of: {metric_types}"}, status=400)
 
         force_metrics_layer = request.GET.get("forceMetricsLayer") == "true"
-        use_rpc = request.GET.get("useRpc", "0") == "1"
+        use_rpc = request.GET.get("useRpc", "0") == "1" and dataset == spans_eap
+        transform_alias_to_input_format = (
+            request.GET.get("transformAliasToInputFormat") == "1" or use_rpc
+        )
+        sentry_sdk.set_tag("performance.use_rpc", use_rpc)
 
         def _get_event_stats(
             scoped_dataset: Any,
@@ -289,7 +292,7 @@ class OrganizationEventsStatsEndpoint(OrganizationEventsV2EndpointBase):
             comparison_delta: timedelta | None,
         ) -> SnubaTSResult | dict[str, SnubaTSResult]:
             if top_events > 0:
-                if use_rpc and dataset == spans_eap:
+                if use_rpc:
                     return spans_rpc.run_top_events_timeseries_query(
                         params=snuba_params,
                         query_string=query,
@@ -301,7 +304,7 @@ class OrganizationEventsStatsEndpoint(OrganizationEventsV2EndpointBase):
                         granularity_secs=rollup,
                         config=SearchResolverConfig(
                             auto_fields=False,
-                            use_aggregate_conditions=False,
+                            use_aggregate_conditions=True,
                         ),
                     )
                 return scoped_dataset.top_events_timeseries(
@@ -321,6 +324,7 @@ class OrganizationEventsStatsEndpoint(OrganizationEventsV2EndpointBase):
                     on_demand_metrics_type=on_demand_metrics_type,
                     include_other=include_other,
                     query_source=query_source,
+                    transform_alias_to_input_format=transform_alias_to_input_format,
                     fallback_to_transactions=features.has(
                         "organizations:performance-discover-dataset-selector",
                         organization,
@@ -328,7 +332,7 @@ class OrganizationEventsStatsEndpoint(OrganizationEventsV2EndpointBase):
                     ),
                 )
 
-            if use_rpc and dataset == spans_eap:
+            if use_rpc:
                 return spans_rpc.run_timeseries_query(
                     params=snuba_params,
                     query_string=query,
@@ -337,7 +341,7 @@ class OrganizationEventsStatsEndpoint(OrganizationEventsV2EndpointBase):
                     referrer=referrer,
                     config=SearchResolverConfig(
                         auto_fields=False,
-                        use_aggregate_conditions=False,
+                        use_aggregate_conditions=True,
                     ),
                     comparison_delta=comparison_delta,
                 )
@@ -572,6 +576,7 @@ class OrganizationEventsStatsEndpoint(OrganizationEventsV2EndpointBase):
                     comparison_delta=comparison_delta,
                     dataset=dataset,
                     transform_alias_to_input_format=transform_alias_to_input_format,
+                    use_rpc=use_rpc,
                 ),
                 status=200,
             )

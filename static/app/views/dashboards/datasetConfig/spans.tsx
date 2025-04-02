@@ -2,10 +2,12 @@ import pickBy from 'lodash/pickBy';
 
 import {doEventsRequest} from 'sentry/actionCreators/events';
 import type {Client} from 'sentry/api';
+import {getInterval} from 'sentry/components/charts/utils';
 import type {PageFilters} from 'sentry/types/core';
 import type {TagCollection} from 'sentry/types/group';
 import type {
   EventsStats,
+  GroupedMultiSeriesEventsStats,
   MultiSeriesEventsStats,
   Organization,
 } from 'sentry/types/organization';
@@ -21,7 +23,6 @@ import {
 } from 'sentry/utils/discover/genericDiscoverQuery';
 import {DiscoverDatasets} from 'sentry/utils/discover/types';
 import {ALLOWED_EXPLORE_VISUALIZE_AGGREGATES} from 'sentry/utils/fields';
-import localStorage from 'sentry/utils/localStorage';
 import type {MEPState} from 'sentry/utils/performance/contexts/metricsEnhancedSetting';
 import type {OnDemandControlContext} from 'sentry/utils/performance/contexts/onDemandControl';
 import {
@@ -30,17 +31,18 @@ import {
 } from 'sentry/views/dashboards/datasetConfig/base';
 import {
   getTableSortOptions,
-  transformEventsResponseToSeries,
+  getTimeseriesSortOptions,
   transformEventsResponseToTable,
 } from 'sentry/views/dashboards/datasetConfig/errorsAndTransactions';
 import {getSeriesRequestData} from 'sentry/views/dashboards/datasetConfig/utils/getSeriesRequestData';
 import {DisplayType, type Widget, type WidgetQuery} from 'sentry/views/dashboards/types';
 import {eventViewFromWidget} from 'sentry/views/dashboards/utils';
 import SpansSearchBar from 'sentry/views/dashboards/widgetBuilder/buildSteps/filterResultsStep/spansSearchBar';
-import {DASHBOARD_RPC_TOGGLE_KEY} from 'sentry/views/dashboards/widgetBuilder/components/rpcToggle';
 import type {FieldValueOption} from 'sentry/views/discover/table/queryField';
 import {FieldValueKind} from 'sentry/views/discover/table/types';
 import {generateFieldOptions} from 'sentry/views/discover/utils';
+
+import {transformEventsResponseToSeries} from '../utils/transformEventsResponseToSeries';
 
 const DEFAULT_WIDGET_QUERY: WidgetQuery = {
   name: '',
@@ -58,6 +60,7 @@ const DEFAULT_FIELD: QueryFieldValue = {
 };
 
 const EAP_AGGREGATIONS = ALLOWED_EXPLORE_VISUALIZE_AGGREGATES.reduce((acc, aggregate) => {
+  // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
   acc[aggregate] = {
     isSortable: true,
     outputType: null,
@@ -73,11 +76,8 @@ const EAP_AGGREGATIONS = ALLOWED_EXPLORE_VISUALIZE_AGGREGATES.reduce((acc, aggre
   return acc;
 }, {});
 
-// getTimeseriesSortOptions is undefined because we want to restrict the
-// sort options to the same behaviour as tables. i.e. we are only able
-// to sort by fields that have already been selected
 export const SpansConfig: DatasetConfig<
-  EventsStats | MultiSeriesEventsStats,
+  EventsStats | MultiSeriesEventsStats | GroupedMultiSeriesEventsStats,
   TableData | EventsTableData
 > = {
   defaultField: DEFAULT_FIELD,
@@ -86,8 +86,11 @@ export const SpansConfig: DatasetConfig<
   SearchBar: SpansSearchBar,
   filterYAxisAggregateParams: () => filterAggregateParams,
   filterYAxisOptions,
+  filterSeriesSortOptions,
   getTableFieldOptions: getPrimaryFieldOptions,
   getTableSortOptions,
+  getTimeseriesSortOptions: (organization, widgetQuery, tags) =>
+    getTimeseriesSortOptions(organization, widgetQuery, tags, getPrimaryFieldOptions),
   getGroupByFieldOptions,
   handleOrderByReset,
   supportedDisplayTypes: [
@@ -123,7 +126,6 @@ export const SpansConfig: DatasetConfig<
   getSeriesRequest,
   transformTable: transformEventsResponseToTable,
   transformSeries: transformEventsResponseToSeries,
-  filterTableOptions,
   filterAggregateParams,
   getCustomFieldRenderer: (field, meta, _organization) => {
     return getFieldRenderer(field, meta, false);
@@ -163,7 +165,7 @@ function getPrimaryFieldOptions(
   return {...baseFieldOptions, ...spanTags};
 }
 
-function filterTableOptions(option: FieldValueOption) {
+function _isNotNumericTag(option: FieldValueOption) {
   // Filter out numeric tags from primary options, they only show up in
   // the parameter fields for aggregate functions
   if ('dataType' in option.value.meta) {
@@ -205,20 +207,23 @@ function getEventsRequest(
   const url = `/organizations/${organization.slug}/events/`;
   const eventView = eventViewFromWidget('', query, pageFilters);
 
-  const useRpc = localStorage.getItem(DASHBOARD_RPC_TOGGLE_KEY) === 'true';
-
   const params: DiscoverQueryRequestParams = {
     per_page: limit,
     cursor,
     referrer,
     dataset: DiscoverDatasets.SPANS_EAP,
-    useRpc: useRpc ? '1' : undefined,
+    useRpc: '1',
     ...queryExtras,
   };
 
   if (query.orderby) {
     params.sort = toArray(query.orderby);
   }
+
+  // Filtering out all spans with op like 'ui.interaction*' which aren't
+  // embedded under transactions. The trace view does not support rendering
+  // such spans yet.
+  eventView.query = `${eventView.query} !transaction.span_id:00`;
 
   return doDiscoverQuery<EventsTableData>(
     api,
@@ -252,7 +257,7 @@ function getGroupByFieldOptions(
   // The only options that should be returned as valid group by options
   // are string tags
   const filterGroupByOptions = (option: FieldValueOption) =>
-    filterTableOptions(option) && !yAxisFilter(option);
+    _isNotNumericTag(option) && !yAxisFilter(option);
 
   return pickBy(primaryFieldOptions, filterGroupByOptions);
 }
@@ -276,8 +281,24 @@ function getSeriesRequest(
     referrer
   );
 
-  const useRpc = localStorage.getItem(DASHBOARD_RPC_TOGGLE_KEY) === 'true';
-  requestData.useRpc = useRpc;
+  requestData.useRpc = true;
+  requestData.interval = getInterval(pageFilters.datetime, 'spans');
+
+  // Filtering out all spans with op like 'ui.interaction*' which aren't
+  // embedded under transactions. The trace view does not support rendering
+  // such spans yet.
+  requestData.query = `${requestData.query} !transaction.span_id:00`;
 
   return doEventsRequest<true>(api, requestData);
+}
+
+// Filters the primary options in the sort by selector
+export function filterSeriesSortOptions(columns: Set<string>) {
+  return (option: FieldValueOption) => {
+    if (option.value.kind === FieldValueKind.FUNCTION) {
+      return true;
+    }
+
+    return columns.has(option.value.meta.name);
+  };
 }

@@ -3,6 +3,7 @@ import type {Theme} from '@emotion/react';
 import {withTheme} from '@emotion/react';
 import type {PieSeriesOption} from 'echarts';
 
+import {getChartColorPalette} from 'sentry/constants/chartPalette';
 import type {ReactEchartsRef, Series} from 'sentry/types/echarts';
 
 import Legend from './components/legend';
@@ -44,7 +45,7 @@ class PieChart extends Component<Props> {
 
   // Select a series to highlight (e.g. shows details of series)
   // This is the same event as when you hover over a series in the chart
-  highlight = dataIndex => {
+  highlight = (dataIndex: any) => {
     if (!this.chart.current) {
       return;
     }
@@ -57,7 +58,7 @@ class PieChart extends Component<Props> {
   };
 
   // Opposite of `highlight`
-  downplay = dataIndex => {
+  downplay = (dataIndex: any) => {
     if (!this.chart.current) {
       return;
     }
@@ -95,15 +96,15 @@ class PieChart extends Component<Props> {
 
     // Note, we only take the first series unit!
     const [firstSeries] = series;
-    const seriesPercentages = this.getSeriesPercentages(firstSeries!);
+    const seriesPercentages: Record<string, unknown> = this.getSeriesPercentages(
+      firstSeries!
+    );
 
     return (
       <BaseChart
         ref={this.chart}
         colors={
-          firstSeries?.data && [
-            ...(theme.charts.getColorPalette(firstSeries.data.length) ?? []),
-          ]
+          firstSeries?.data && getChartColorPalette(firstSeries.data.length).slice()
         }
         // when legend highlights it does NOT pass dataIndex :(
         onHighlight={({name}) => {
@@ -142,18 +143,18 @@ class PieChart extends Component<Props> {
           bottom: 10,
           formatter: name =>
             `${name} ${
-              typeof seriesPercentages[name] !== 'undefined'
-                ? `(${seriesPercentages[name]}%)`
-                : ''
+              typeof seriesPercentages[name] === 'undefined'
+                ? ''
+                : `(${seriesPercentages[name]}%)`
             }`,
         })}
         tooltip={{
           formatter: data => {
             return [
               '<div class="tooltip-series">',
-              `<div><span class="tooltip-label">${data.marker}<strong>${data.name}</strong></span> ${data.percent}%</div>`,
+              `<div><span class="tooltip-label">${(data as any).marker}<strong>${(data as any).name}</strong></span> ${(data as any).percent}%</div>`,
               '</div>',
-              `<div class="tooltip-footer">${data.value}</div>`,
+              `<div class="tooltip-footer">${(data as any).value}</div>`,
               '</div>',
               '<div class="tooltip-arrow"></div>',
             ].join('');

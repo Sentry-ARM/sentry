@@ -5,9 +5,9 @@ import {useTheme} from '@emotion/react';
 import styled from '@emotion/styled';
 import partition from 'lodash/partition';
 
-import {Button} from 'sentry/components/button';
 import ChartZoom from 'sentry/components/charts/chartZoom';
 import {LineChart} from 'sentry/components/charts/lineChart';
+import {Button} from 'sentry/components/core/button';
 import Count from 'sentry/components/count';
 import EmptyStateWarning from 'sentry/components/emptyStateWarning';
 import IdBadge from 'sentry/components/idBadge';
@@ -75,7 +75,7 @@ export function FunctionTrendsWidget({
   );
 
   const handleCursor = useCallback(
-    (cursor, pathname, query) => {
+    (cursor: any, pathname: any, query: any) => {
       browserHistory.push({
         pathname,
         query: {...query, [cursorName]: cursor},
@@ -138,7 +138,7 @@ export function FunctionTrendsWidget({
                   trendType={trendType}
                   isExpanded={i === expandedIndex}
                   setExpanded={() => {
-                    const nextIndex = expandedIndex !== i ? i : (i + 1) % l.length;
+                    const nextIndex = expandedIndex === i ? (i + 1) % l.length : i;
                     setExpandedIndex(nextIndex);
                   }}
                   func={f}
@@ -242,11 +242,11 @@ function FunctionTrendsEntry({
     // the same bucket as the breakpoint.
 
     const beforeTarget = generateProfileRouteFromProfileReference({
-      orgSlug: organization.slug,
+      organization,
       projectSlug: project.slug,
       reference: beforeExamples[beforeExamples.length - 2]![1],
-      frameName: func.function as string,
-      framePackage: func.package as string,
+      frameName: func.function,
+      framePackage: func.package,
     });
 
     before = (
@@ -256,11 +256,11 @@ function FunctionTrendsEntry({
     );
 
     const afterTarget = generateProfileRouteFromProfileReference({
-      orgSlug: organization.slug,
+      organization,
       projectSlug: project.slug,
       reference: afterExamples[afterExamples.length - 2]![1],
-      frameName: func.function as string,
-      framePackage: func.package as string,
+      frameName: func.function,
+      framePackage: func.package,
     });
 
     after = (
@@ -324,6 +324,7 @@ function FunctionTrendsChart({func, trendFunction}: FunctionTrendsChartProps) {
       data: func.stats.data.map(([timestamp, data]) => {
         return {
           name: timestamp * 1e3,
+          // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
           value: data[0].count / 1e6,
         };
       }),

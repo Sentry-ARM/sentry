@@ -2,9 +2,9 @@ import {useCallback, useMemo} from 'react';
 import styled from '@emotion/styled';
 import type {Location} from 'history';
 
-import {Button, LinkButton} from 'sentry/components/button';
 import {CompactSelect} from 'sentry/components/compactSelect';
 import type {SelectOption} from 'sentry/components/compactSelect/types';
+import {Button, LinkButton} from 'sentry/components/core/button';
 import Count from 'sentry/components/count';
 import {DateTime} from 'sentry/components/dateTime';
 import type {SmartSearchBarProps} from 'sentry/components/deprecatedSmartSearchBar';
@@ -127,7 +127,7 @@ function ProfileSummaryHeader(props: ProfileSummaryHeaderProps) {
     props.project &&
     props.transaction &&
     transactionSummaryRouteWithQuery({
-      orgSlug: props.organization.slug,
+      organization: props.organization,
       transaction: props.transaction,
       projectID: props.project.id,
       query: {query: props.query},
@@ -523,7 +523,7 @@ function AggregateFlamegraphToolbar(props: AggregateFlamegraphToolbarProps) {
   const flamegraphs = useMemo(() => [flamegraph], [flamegraph]);
   const spans = useMemo(() => [], []);
 
-  const frameSelectOptions: SelectOption<'system' | 'application' | 'all'>[] =
+  const frameSelectOptions: Array<SelectOption<'system' | 'application' | 'all'>> =
     useMemo(() => {
       return [
         {value: 'system', label: t('System Frames')},
@@ -631,6 +631,7 @@ const ProfileDigestScrollContainer = styled('div')`
   flex-direction: column;
 `;
 
+// @ts-expect-error TS(7008): Member 'hideRegressions' implicitly has an 'any' t... Remove this comment to see the full error message
 const ProfileVisualizationContainer = styled('div')<{hideRegressions}>`
   display: grid;
   /* false positive for grid layout */
@@ -709,7 +710,7 @@ function ProfileDigest(props: ProfileDigestProps) {
   const flamegraphTarget =
     project && profile
       ? generateProfileFlamechartRoute({
-          orgSlug: organization.slug,
+          organization,
           projectSlug: project.slug,
           profileId: profile?.['profile.id'] as string,
         })

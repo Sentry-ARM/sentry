@@ -9,6 +9,9 @@ from sentry.workflow_engine.types import DataConditionHandler, WorkflowJob
 
 @condition_handler_registry.register(Condition.NEW_HIGH_PRIORITY_ISSUE)
 class NewHighPriorityIssueConditionHandler(DataConditionHandler[WorkflowJob]):
+    type = DataConditionHandler.Type.WORKFLOW_TRIGGER
+    comparison_json_schema = {"type": "boolean"}
+
     @staticmethod
     def evaluate_value(job: WorkflowJob, comparison: Any) -> bool:
         is_new = is_new_event(job)

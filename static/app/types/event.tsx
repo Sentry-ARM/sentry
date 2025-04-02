@@ -85,11 +85,11 @@ interface ChecksumVariant extends BaseVariant {
 }
 
 interface HasComponentGrouping {
-  client_values?: Array<string>;
+  client_values?: string[];
   component?: EventGroupComponent;
   config?: EventGroupingConfig;
   matched_rule?: string;
-  values?: Array<string>;
+  values?: string[];
 }
 
 interface ComponentVariant extends BaseVariant, HasComponentGrouping {
@@ -128,14 +128,14 @@ export type EventGroupInfo = Record<EventGroupVariantKey, EventGroupVariant>;
  * SDK Update metadata
  */
 type EnableIntegrationSuggestion = {
-  enables: Array<SDKUpdatesSuggestion>;
+  enables: SDKUpdatesSuggestion[];
   integrationName: string;
   type: 'enableIntegration';
   integrationUrl?: string | null;
 };
 
 export type UpdateSdkSuggestion = {
-  enables: Array<SDKUpdatesSuggestion>;
+  enables: SDKUpdatesSuggestion[];
   newSdkVersion: string;
   sdkName: string;
   type: 'updateSdk';
@@ -143,7 +143,7 @@ export type UpdateSdkSuggestion = {
 };
 
 type ChangeSdkSuggestion = {
-  enables: Array<SDKUpdatesSuggestion>;
+  enables: SDKUpdatesSuggestion[];
   newSdkName: string;
   type: 'changeSdk';
   sdkUrl?: string | null;
@@ -186,7 +186,7 @@ export enum LockType {
 export type Frame = {
   absPath: string | null;
   colNo: number | null;
-  context: Array<[number, string]>;
+  context: Array<[number, string | null]>;
   filename: string | null;
   function: string | null;
   inApp: boolean;
@@ -229,7 +229,7 @@ export type ExceptionValue = {
 export type ExceptionType = {
   excOmitted: any | null;
   hasSystemFrames: boolean;
-  values?: Array<ExceptionValue>;
+  values?: ExceptionValue[];
 };
 
 // This type is incomplete
@@ -284,21 +284,27 @@ export enum EntryType {
 
 export type EntryDebugMeta = {
   data: {
-    images: Array<Image | null>;
+    images?: Array<Image | null>;
+    sdk_info?: {
+      sdk_name: string;
+      version_major: number;
+      version_minor: number;
+      version_patchlevel: number;
+    };
   };
   type: EntryType.DEBUGMETA;
 };
 
 export type EntryBreadcrumbs = {
   data: {
-    values: Array<RawCrumb>;
+    values: RawCrumb[];
   };
   type: EntryType.BREADCRUMBS;
 };
 
 export type EntryThreads = {
   data: {
-    values?: Array<Thread>;
+    values?: Thread[];
   };
   type: EntryType.THREADS;
 };
@@ -333,11 +339,11 @@ type EntryMessage = {
 
 export interface EntryRequestDataDefault {
   apiTarget: null;
-  method: string;
+  method: string | null;
   url: string;
   cookies?: Array<[key: string, value: string] | null>;
-  data?: string | null | Record<string, any> | [key: string, value: any][];
-  env?: Record<string, string>;
+  data?: string | null | Record<string, any> | Array<[key: string, value: any]>;
+  env?: Record<string, string> | null;
   fragment?: string | null;
   headers?: Array<[key: string, value: string] | null>;
   inferredContentType?:
@@ -697,10 +703,7 @@ export type PerformanceDetectorData = {
   issueType?: IssueType;
 };
 
-type EventEvidenceDisplay = {
-  /**
-   * Used for alerting, probably not useful for the UI
-   */
+export type EventEvidenceDisplay = {
   important: boolean;
   name: string;
   value: string;
@@ -795,7 +798,7 @@ interface EventBase {
     name: string;
     version: string;
   } | null;
-  sdkUpdates?: Array<SDKUpdatesSuggestion>;
+  sdkUpdates?: SDKUpdatesSuggestion[];
   userReport?: any;
 }
 
@@ -810,13 +813,9 @@ export interface EventTransaction
   endTimestamp: number;
   // EntryDebugMeta is required for profiles to render in the span
   // waterfall with the correct symbolication statuses
-  entries: (
-    | EntrySpans
-    | EntryRequest
-    | EntryDebugMeta
-    | AggregateEntrySpans
-    | EntryBreadcrumbs
-  )[];
+  entries: Array<
+    EntrySpans | EntryRequest | EntryDebugMeta | AggregateEntrySpans | EntryBreadcrumbs
+  >;
   startTimestamp: number;
   type: EventOrGroupType.TRANSACTION;
   perfProblem?: PerformanceDetectorData;
@@ -851,13 +850,9 @@ export interface AggregateEventTransaction
 }
 
 export interface EventError extends Omit<EventBase, 'entries' | 'type'> {
-  entries: (
-    | EntryException
-    | EntryStacktrace
-    | EntryRequest
-    | EntryThreads
-    | EntryDebugMeta
-  )[];
+  entries: Array<
+    EntryException | EntryStacktrace | EntryRequest | EntryThreads | EntryDebugMeta
+  >;
   type: EventOrGroupType.ERROR;
 }
 

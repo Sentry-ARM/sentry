@@ -100,7 +100,7 @@ function useReplayData({
   const projectSlug = useReplayProjectSlug({replayRecord});
 
   const getAttachmentsQueryKey = useCallback(
-    ({cursor, per_page}): ApiQueryKey => {
+    ({cursor, per_page}: any): ApiQueryKey => {
       return [
         `/projects/${orgSlug}/${projectSlug}/replays/${replayId}/recording-segments/`,
         {
@@ -131,7 +131,7 @@ function useReplayData({
   });
 
   const getErrorsQueryKey = useCallback(
-    ({cursor, per_page}): ApiQueryKey => {
+    ({cursor, per_page}: any): ApiQueryKey => {
       // Clone the `finished_at` time and bump it up one second because finishedAt
       // has the `ms` portion truncated, while replays-events-meta operates on
       // timestamps with `ms` attached. So finishedAt could be at time `12:00:00.000Z`
@@ -143,6 +143,7 @@ function useReplayData({
         `/organizations/${orgSlug}/replays-events-meta/`,
         {
           query: {
+            referrer: 'replay_details',
             dataset: DiscoverDatasets.DISCOVER,
             start: replayRecord?.started_at.toISOString(),
             end: finishedAtClone.toISOString(),
@@ -158,7 +159,7 @@ function useReplayData({
   );
 
   const getPlatformErrorsQueryKey = useCallback(
-    ({cursor, per_page}): ApiQueryKey => {
+    ({cursor, per_page}: any): ApiQueryKey => {
       // Clone the `finished_at` time and bump it up one second because finishedAt
       // has the `ms` portion truncated, while replays-events-meta operates on
       // timestamps with `ms` attached. So finishedAt could be at time `12:00:00.000Z`
@@ -170,6 +171,7 @@ function useReplayData({
         `/organizations/${orgSlug}/replays-events-meta/`,
         {
           query: {
+            referrer: 'replay_details',
             dataset: DiscoverDatasets.ISSUE_PLATFORM,
             start: replayRecord?.started_at.toISOString(),
             end: finishedAtClone.toISOString(),

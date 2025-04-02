@@ -7,6 +7,8 @@ from sentry.workflow_engine.types import DataConditionHandler, WorkflowJob
 
 @condition_handler_registry.register(Condition.EVENT_SEEN_COUNT)
 class EventSeenCountConditionHandler(DataConditionHandler[WorkflowJob]):
+    type = DataConditionHandler.Type.ACTION_FILTER
+
     @staticmethod
     def evaluate_value(job: WorkflowJob, comparison: Any) -> bool:
         event = job["event"]

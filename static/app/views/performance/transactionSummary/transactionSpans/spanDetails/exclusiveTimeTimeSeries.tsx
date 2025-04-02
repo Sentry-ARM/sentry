@@ -12,6 +12,7 @@ import {getInterval, getSeriesSelection} from 'sentry/components/charts/utils';
 import {normalizeDateTimeParams} from 'sentry/components/organizations/pageFilters/parse';
 import Placeholder from 'sentry/components/placeholder';
 import QuestionTooltip from 'sentry/components/questionTooltip';
+import {getChartColorPalette} from 'sentry/constants/chartPalette';
 import {IconWarning} from 'sentry/icons';
 import {t} from 'sentry/locale';
 import type {Organization} from 'sentry/types/organization';
@@ -59,7 +60,7 @@ export default function ExclusiveTimeTimeSeries(props: Props) {
     'percentileArray(spans_exclusive_time, 0.99)',
   ];
 
-  const handleLegendSelectChanged = legendChange => {
+  const handleLegendSelectChanged = (legendChange: any) => {
     const {selected} = legendChange;
     const unselected = Object.keys(selected).filter(key => !selected[key]);
 
@@ -121,14 +122,14 @@ export default function ExclusiveTimeTimeSeries(props: Props) {
                   top: '40px',
                   bottom: '0px',
                 },
-                colors: theme.charts.getColorPalette(yAxis.length - 2),
+                colors: getChartColorPalette(yAxis.length - 2),
                 seriesOptions: {
                   showSymbol: false,
                 },
                 tooltip: {
                   trigger: 'axis' as const,
                   // p50() coerces the axis to be time based
-                  valueFormatter: (value, _seriesName) =>
+                  valueFormatter: (value: any, _seriesName: any) =>
                     tooltipFormatter(value, 'duration'),
                 },
                 xAxis: timeframe

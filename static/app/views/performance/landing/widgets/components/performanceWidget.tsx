@@ -34,7 +34,7 @@ export function GenericPerformanceWidget<T extends WidgetDataConstraint>(
 ) {
   // Use object keyed to chart setting so switching between charts of a similar type doesn't retain data with query components still having inflight requests.
   const [allWidgetData, setWidgetData] = useState<{[chartSetting: string]: T}>({});
-  const widgetData = allWidgetData[props.chartSetting]! ?? {};
+  const widgetData = allWidgetData[props.chartSetting] ?? ({} as T);
   const widgetDataRef = useRef(widgetData);
 
   const setWidgetDataForKey = useCallback(
@@ -50,7 +50,7 @@ export function GenericPerformanceWidget<T extends WidgetDataConstraint>(
   const removeWidgetDataForKey = useCallback(
     (dataKey: string) => {
       const _widgetData = widgetDataRef.current;
-      const newWidgetData = {..._widgetData} as T;
+      const newWidgetData = {..._widgetData};
       delete newWidgetData[dataKey];
       widgetDataRef.current = newWidgetData;
       setWidgetData({[props.chartSetting]: newWidgetData});
@@ -176,9 +176,12 @@ export function DataDisplay<T extends WidgetDataConstraint>(
 
 function DefaultErrorComponent(props: {height: number}) {
   return (
-    <ErrorPanel data-test-id="widget-state-is-errored" height={`${props.height}px`}>
+    <ErrorPanelWithMinHeight
+      data-test-id="widget-state-is-errored"
+      minHeight={`${props.height}px`}
+    >
       <IconWarning color="gray300" size="lg" />
-    </ErrorPanel>
+    </ErrorPanelWithMinHeight>
   );
 }
 
@@ -188,6 +191,10 @@ const defaultGrid = {
   top: space(2),
   bottom: space(1),
 };
+
+const ErrorPanelWithMinHeight = styled(ErrorPanel)<{minHeight: string}>`
+  min-height: ${p => p.minHeight};
+`;
 
 const ContentContainer = styled('div')<{bottomPadding?: boolean; noPadding?: boolean}>`
   padding-left: ${p => (p.noPadding ? 0 : space(2))};

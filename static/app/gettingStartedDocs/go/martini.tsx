@@ -1,7 +1,6 @@
 import {Fragment} from 'react';
-import styled from '@emotion/styled';
 
-import {Alert} from 'sentry/components/alert';
+import {Alert} from 'sentry/components/core/alert';
 import ExternalLink from 'sentry/components/links/externalLink';
 import {StepType} from 'sentry/components/onboarding/gettingStartedDoc/step';
 import type {
@@ -100,7 +99,7 @@ app.Get("/foo", func() string {
 
 app.Run()`;
 
-const getBeforeSendSnippet = params => `
+const getBeforeSendSnippet = (params: any) => `
 sentry.Init(sentry.ClientOptions{
   Dsn: "${params.dsn.public}",
   BeforeSend: func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
@@ -173,12 +172,12 @@ const onboarding: OnboardingConfig = {
               }
             )}
           </p>
-          <AlertWithoutMarginBottom>
+          <Alert type="info">
             {tct(
               "Keep in mind that [code:*sentry.Hub] won't be available in middleware attached before [code:sentrymartini]!",
               {code: <code />}
             )}
-          </AlertWithoutMarginBottom>
+          </Alert>
         </Fragment>
       ),
       configurations: [
@@ -226,7 +225,3 @@ const docs: Docs = {
 };
 
 export default docs;
-
-const AlertWithoutMarginBottom = styled(Alert)`
-  margin-bottom: 0;
-`;

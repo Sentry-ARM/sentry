@@ -6,8 +6,8 @@ import {createDashboard} from 'sentry/actionCreators/dashboards';
 import {addErrorMessage, addSuccessMessage} from 'sentry/actionCreators/indicator';
 import type {ModalRenderProps} from 'sentry/actionCreators/modal';
 import type {Client} from 'sentry/api';
-import {Button} from 'sentry/components/button';
 import {CodeSnippet} from 'sentry/components/codeSnippet';
+import {Button} from 'sentry/components/core/button';
 import {IconUpload} from 'sentry/icons';
 import {t} from 'sentry/locale';
 import type {Organization} from 'sentry/types/organization';
@@ -49,7 +49,7 @@ function ImportDashboardFromFileModal({
     return true;
   }
 
-  const handleFileChange = e => {
+  const handleFileChange = (e: any) => {
     const fileToUpload = e.target.files[0];
     if (validateFile(fileToUpload)) {
       const fileReader = new FileReader();

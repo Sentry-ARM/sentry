@@ -20,20 +20,19 @@ describe('QueryFilterBuilder', () => {
     organization = OrganizationFixture({
       features: ['dashboards-widget-builder-redesign'],
     });
-    jest.mocked(useCustomMeasurements).mockReturnValue({
-      customMeasurements: {},
-    });
-    jest.mocked(useSpanTags).mockReturnValue({});
+    jest.mocked(useCustomMeasurements).mockReturnValue({customMeasurements: {}});
+    jest.mocked(useSpanTags).mockReturnValue({tags: {}, isLoading: false});
 
-    MockApiClient.addMockResponse({
-      url: '/organizations/org-slug/recent-searches/',
-    });
+    MockApiClient.addMockResponse({url: '/organizations/org-slug/recent-searches/'});
   });
 
   it('renders a dataset-specific query filter bar', async () => {
     render(
       <WidgetBuilderProvider>
-        <WidgetBuilderQueryFilterBuilder onQueryConditionChange={() => {}} />
+        <WidgetBuilderQueryFilterBuilder
+          onQueryConditionChange={() => {}}
+          validatedWidgetResponse={{} as any}
+        />
       </WidgetBuilderProvider>,
       {
         organization,
@@ -54,17 +53,16 @@ describe('QueryFilterBuilder', () => {
 
     render(
       <WidgetBuilderProvider>
-        <WidgetBuilderQueryFilterBuilder onQueryConditionChange={() => {}} />
+        <WidgetBuilderQueryFilterBuilder
+          onQueryConditionChange={() => {}}
+          validatedWidgetResponse={{} as any}
+        />
       </WidgetBuilderProvider>,
       {
         organization,
         router: RouterFixture({
           location: LocationFixture({
-            query: {
-              query: [],
-              dataset: WidgetType.SPANS,
-              displayType: DisplayType.TABLE,
-            },
+            query: {query: [], dataset: WidgetType.SPANS, displayType: DisplayType.TABLE},
           }),
         }),
       }
@@ -77,7 +75,10 @@ describe('QueryFilterBuilder', () => {
   it('renders a legend alias input for charts', async () => {
     render(
       <WidgetBuilderProvider>
-        <WidgetBuilderQueryFilterBuilder onQueryConditionChange={() => {}} />
+        <WidgetBuilderQueryFilterBuilder
+          onQueryConditionChange={() => {}}
+          validatedWidgetResponse={{} as any}
+        />
       </WidgetBuilderProvider>,
       {
         organization,
@@ -99,7 +100,10 @@ describe('QueryFilterBuilder', () => {
   it('limits number of filter queries to 3', async () => {
     render(
       <WidgetBuilderProvider>
-        <WidgetBuilderQueryFilterBuilder onQueryConditionChange={() => {}} />
+        <WidgetBuilderQueryFilterBuilder
+          onQueryConditionChange={() => {}}
+          validatedWidgetResponse={{} as any}
+        />
       </WidgetBuilderProvider>,
       {
         organization,
@@ -118,11 +122,11 @@ describe('QueryFilterBuilder', () => {
     expect(
       screen.getByPlaceholderText('Search for events, users, tags, and more')
     ).toBeInTheDocument();
-    expect(await screen.findByText('Add Filter')).toBeInTheDocument();
+    expect(await screen.findByText('+ Add Filter')).toBeInTheDocument();
 
-    await userEvent.click(await screen.findByText('Add Filter'));
-    await userEvent.click(await screen.findByText('Add Filter'));
+    await userEvent.click(await screen.findByText('+ Add Filter'));
+    await userEvent.click(await screen.findByText('+ Add Filter'));
 
-    expect(screen.queryByText('Add Filter')).not.toBeInTheDocument();
+    expect(screen.queryByText('+ Add Filter')).not.toBeInTheDocument();
   });
 });

@@ -10,13 +10,17 @@ import Feature from 'sentry/components/acl/feature';
 import FeatureDisabled from 'sentry/components/acl/featureDisabled';
 import ArchiveActions, {getArchiveActions} from 'sentry/components/actions/archive';
 import ResolveActions from 'sentry/components/actions/resolve';
+import {renderArchiveReason} from 'sentry/components/archivedBox';
 import GuideAnchor from 'sentry/components/assistant/guideAnchor';
-import {Button, LinkButton} from 'sentry/components/button';
+import {Flex} from 'sentry/components/container/flex';
+import {Button, LinkButton} from 'sentry/components/core/button';
 import {DropdownMenu} from 'sentry/components/dropdownMenu';
 import {EnvironmentPageFilter} from 'sentry/components/organizations/environmentPageFilter';
+import {renderResolutionReason} from 'sentry/components/resolutionBox';
 import {
   IconCheckmark,
   IconEllipsis,
+  IconLink,
   IconSubscribed,
   IconUnsubscribed,
 } from 'sentry/icons';
@@ -44,11 +48,11 @@ import {useNavigate} from 'sentry/utils/useNavigate';
 import useOrganization from 'sentry/utils/useOrganization';
 import {hasDatasetSelector} from 'sentry/views/dashboards/utils';
 import {NewIssueExperienceButton} from 'sentry/views/issueDetails/actions/newIssueExperienceButton';
+import PublishIssueModal from 'sentry/views/issueDetails/actions/publishModal';
+import ShareIssueModal from 'sentry/views/issueDetails/actions/shareModal';
+import SubscribeAction from 'sentry/views/issueDetails/actions/subscribeAction';
 import {Divider} from 'sentry/views/issueDetails/divider';
 import {useHasStreamlinedUI} from 'sentry/views/issueDetails/utils';
-
-import ShareIssueModal from './shareModal';
-import SubscribeAction from './subscribeAction';
 
 type UpdateData =
   | {isBookmarked: boolean}
@@ -126,7 +130,7 @@ export function GroupActions({group, project, disabled, event}: GroupActionsProp
 
     const discoverView = EventView.fromSavedQuery(discoverQuery);
     return discoverView.getResultsViewUrlTarget(
-      organization.slug,
+      organization,
       false,
       hasDatasetSelector(organization) ? SavedQueryDatasets.ERRORS : undefined
     );
@@ -267,7 +271,7 @@ export function GroupActions({group, project, disabled, event}: GroupActionsProp
   };
 
   const renderDiscardModal = ({Body, Footer, closeModal}: ModalRenderProps) => {
-    function renderDiscardDisabled({children, ...innerProps}) {
+    function renderDiscardDisabled({children, ...innerProps}: any) {
       return children({
         ...innerProps,
         renderDisabled: ({features}: {features: string[]}) => (
@@ -339,6 +343,22 @@ export function GroupActions({group, project, disabled, event}: GroupActionsProp
       <ShareIssueModal
         {...modalProps}
         organization={organization}
+        groupId={group.id}
+        event={event}
+      />
+    ));
+  };
+
+  const openPublishModal = () => {
+    trackAnalytics('issue_details.publish_issue_modal_opened', {
+      organization,
+      streamline: hasStreamlinedUI,
+      ...getAnalyticsDataForGroup(group),
+    });
+    openModal(modalProps => (
+      <PublishIssueModal
+        {...modalProps}
+        organization={organization}
         projectSlug={group.project.slug}
         groupId={group.id}
         onToggle={onToggleShare}
@@ -367,9 +387,31 @@ export function GroupActions({group, project, disabled, event}: GroupActionsProp
         (isResolved || isIgnored ? (
           <ResolvedActionWapper>
             <ResolvedWrapper>
-              <IconCheckmark />
-              {isResolved ? resolvedCopyCap || t('Resolved') : t('Archived')}
+              <IconCheckmark size="md" />
+              <Flex column>
+                {isResolved ? resolvedCopyCap || t('Resolved') : t('Archived')}
+                <ReasonBanner>
+                  {group.status === 'resolved'
+                    ? renderResolutionReason({
+                        statusDetails: group.statusDetails,
+                        activities: group.activity,
+                        hasStreamlinedUI,
+                        project,
+                        organization,
+                      })
+                    : null}
+                  {group.status === 'ignored'
+                    ? renderArchiveReason({
+                        substatus: group.substatus,
+                        statusDetails: group.statusDetails,
+                        organization,
+                        hasStreamlinedUI,
+                      })
+                    : null}
+                </ReasonBanner>
+              </Flex>
             </ResolvedWrapper>
+
             <Divider />
             {resolveCap.enabled && (
               <Button
@@ -423,6 +465,17 @@ export function GroupActions({group, project, disabled, event}: GroupActionsProp
             />
           </Fragment>
         ))}
+      {hasStreamlinedUI && (
+        <Button
+          size="sm"
+          onClick={openShareModal}
+          icon={<IconLink />}
+          aria-label={t('Share')}
+          title={t('Share Issue')}
+          analyticsEventKey="issue_details.share_action_clicked"
+          analyticsEventName="Issue Details: Share Action Clicked"
+        />
+      )}
       <DropdownMenu
         triggerProps={{
           'aria-label': t('More Actions'),
@@ -446,15 +499,7 @@ export function GroupActions({group, project, disabled, event}: GroupActionsProp
                   children: archiveDropdownItems,
                 },
               ]),
-          {
-            key: 'open-in-discover',
-            // XXX: Always show for streamlined UI
-            className: hasStreamlinedUI ? undefined : 'hidden-sm hidden-md hidden-lg',
-            label: t('Open in Discover'),
-            to: disabled ? '' : getDiscoverUrl(),
-            onAction: () => trackIssueAction('open_in_discover'),
-          },
-          // We don't hide the subscribe button for streamlined UI
+          // We don't hide the subscribe or discover button for streamlined UI
           ...(hasStreamlinedUI
             ? []
             : [
@@ -465,6 +510,13 @@ export function GroupActions({group, project, disabled, event}: GroupActionsProp
                   disabled: disabled || group.subscriptionDetails?.disabled,
                   onAction: onToggleSubscribe,
                 },
+                {
+                  key: 'open-in-discover',
+                  className: 'hidden-sm hidden-md hidden-lg',
+                  label: t('Open in Discover'),
+                  to: disabled ? '' : getDiscoverUrl(),
+                  onAction: () => trackIssueAction('open_in_discover'),
+                },
               ]),
           {
             key: 'mark-review',
@@ -474,11 +526,11 @@ export function GroupActions({group, project, disabled, event}: GroupActionsProp
             onAction: () => onUpdate({inbox: false}),
           },
           {
-            key: 'share',
-            label: t('Share'),
+            key: 'publish',
+            label: t('Publish'),
             disabled: disabled || !shareCap.enabled,
             hidden: !organization.features.includes('shared-issues'),
-            onAction: openShareModal,
+            onAction: openPublishModal,
           },
           {
             key: bookmarkKey,
@@ -554,7 +606,7 @@ export function GroupActions({group, project, disabled, event}: GroupActionsProp
                   : t('Change status to unresolved')
               }
               size="sm"
-              disabled={disabled || isAutoResolved}
+              disabled={disabled || isAutoResolved || !resolveCap.enabled}
               onClick={() =>
                 onUpdate({
                   status: GroupStatus.UNRESOLVED,
@@ -608,7 +660,7 @@ const ActionWrapper = styled('div')`
 
 const ResolvedWrapper = styled('div')`
   display: flex;
-  gap: ${space(0.5)};
+  gap: ${space(1.5)};
   align-items: center;
   color: ${p => p.theme.green400};
   font-weight: bold;
@@ -619,4 +671,10 @@ const ResolvedActionWapper = styled('div')`
   display: flex;
   gap: ${space(1)};
   align-items: center;
+`;
+
+const ReasonBanner = styled('div')`
+  font-weight: normal;
+  color: ${p => p.theme.green400};
+  font-size: ${p => p.theme.fontSizeSmall};
 `;

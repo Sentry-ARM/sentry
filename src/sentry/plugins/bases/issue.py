@@ -4,10 +4,10 @@ from django import forms
 from django.conf import settings
 from rest_framework.request import Request
 
+from sentry import analytics
 from sentry.models.activity import Activity
 from sentry.models.groupmeta import GroupMeta
 from sentry.plugins.base.v1 import Plugin
-from sentry.signals import issue_tracker_used
 from sentry.types.activity import ActivityType
 from sentry.users.services.usersocialauth.model import RpcUserSocialAuth
 from sentry.users.services.usersocialauth.service import usersocialauth_service
@@ -33,7 +33,7 @@ class IssueTrackingPlugin(Plugin):
     def get_plugin_type(self):
         return "issue-tracking"
 
-    def _get_group_body(self, request: Request, group, event, **kwargs):
+    def _get_group_body(self, group, event, **kwargs):
         result = []
         for interface in event.interfaces.values():
             output = safe_execute(interface.to_string, event)
@@ -41,15 +41,15 @@ class IssueTrackingPlugin(Plugin):
                 result.append(output)
         return "\n\n".join(result)
 
-    def _get_group_description(self, request: Request, group, event):
+    def _get_group_description(self, group, event):
         referrer = self.get_conf_key() + "_plugin"
         output = [absolute_uri(group.get_absolute_url(params={"referrer": referrer}))]
-        body = self._get_group_body(request, group, event)
+        body = self._get_group_body(group, event)
         if body:
             output.extend(["", "```", body, "```"])
         return "\n".join(output)
 
-    def _get_group_title(self, request: Request, group, event):
+    def _get_group_title(self, group, event):
         return event.title
 
     def is_configured(self, project) -> bool:
@@ -91,12 +91,6 @@ class IssueTrackingPlugin(Plugin):
         """
         return "Create %s Issue" % self.get_title()
 
-    def get_unlink_issue_title(self, **kwargs):
-        """
-        Return a string for the "Unlink plugin issue" action label.
-        """
-        return "Unlink %s Issue" % self.get_title()
-
     def get_new_issue_form(self, request: Request, group, event, **kwargs):
         """
         Return a Form for the "Create new issue" page.
@@ -116,12 +110,6 @@ class IssueTrackingPlugin(Plugin):
         """
         Given an issue_id (string) return an absolute URL to the issue's details
         page.
-        """
-        raise NotImplementedError
-
-    def get_issue_title_by_id(self, request: Request, group, issue_id):
-        """
-        Given an issue_id return the issue's title.
         """
         raise NotImplementedError
 
@@ -147,8 +135,8 @@ class IssueTrackingPlugin(Plugin):
 
     def get_initial_form_data(self, request: Request, group, event, **kwargs):
         return {
-            "description": self._get_group_description(request, group, event),
-            "title": self._get_group_title(request, group, event),
+            "description": self._get_group_description(group, event),
+            "title": self._get_group_title(group, event),
         }
 
     def has_auth_configured(self, **kwargs):
@@ -156,10 +144,6 @@ class IssueTrackingPlugin(Plugin):
             return True
 
         return self.auth_provider in get_auth_providers()
-
-    def handle_unlink_issue(self, request: Request, group, **kwargs):
-        GroupMeta.objects.unset_value(group, "%s:tid" % self.get_conf_key())
-        return self.redirect(group.get_absolute_url())
 
     def view(self, request: Request, group, **kwargs):
         has_auth_configured = self.has_auth_configured()
@@ -223,12 +207,15 @@ class IssueTrackingPlugin(Plugin):
                             data=issue_information,
                         )
 
-                        issue_tracker_used.send_robust(
-                            plugin=self,
-                            project=group.project,
-                            user=request.user,
-                            sender=IssueTrackingPlugin,
+                        analytics.record(
+                            "issue_tracker.used",
+                            user_id=request.user.id,
+                            default_user_id=project.organization.get_default_owner().id,
+                            organization_id=project.organization_id,
+                            project_id=project.id,
+                            issue_tracker=self.slug,
                         )
+
                         return self.redirect(group.get_absolute_url())
 
         context = {
@@ -243,7 +230,7 @@ class IssueTrackingPlugin(Plugin):
 
         return self.render(self.create_issue_template, context)
 
-    def actions(self, request: Request, group, action_list, **kwargs):
+    def actions(self, group, action_list, **kwargs):
         if not self.is_configured(project=group.project):
             return action_list
         prefix = self.get_conf_key()
@@ -268,9 +255,6 @@ class IssueTrackingPlugin(Plugin):
         )
 
         return tag_list
-
-    def get_issue_doc_html(self, **kwargs):
-        return ""
 
 
 IssuePlugin = IssueTrackingPlugin

@@ -36,6 +36,7 @@ export type WidgetBuilderSearchBarProps = {
   pageFilters: PageFilters;
   widgetQuery: WidgetQuery;
   dataset?: DiscoverDatasets;
+  portalTarget?: HTMLElement | null;
 };
 
 export interface DatasetConfig<SeriesResponse, TableResponse> {
@@ -43,7 +44,7 @@ export interface DatasetConfig<SeriesResponse, TableResponse> {
    * Dataset specific search bar for the 'Filter' step in the
    * widget builder.
    */
-  SearchBar: (props: WidgetBuilderSearchBarProps) => JSX.Element;
+  SearchBar: (props: WidgetBuilderSearchBarProps) => React.JSX.Element;
   /**
    * Default field to add to the widget query when adding a new field.
    */
@@ -129,6 +130,7 @@ export interface DatasetConfig<SeriesResponse, TableResponse> {
   getCustomFieldRenderer?: (
     field: string,
     meta: MetaType,
+    widget?: Widget,
     organization?: Organization
   ) => ReturnType<typeof getFieldRenderer> | null;
   /**
@@ -190,7 +192,7 @@ export interface DatasetConfig<SeriesResponse, TableResponse> {
   getTableSortOptions?: (
     organization: Organization,
     widgetQuery: WidgetQuery
-  ) => SelectValue<string>[];
+  ) => Array<SelectValue<string>>;
   /**
    * Generate the list of sort options for timeseries
    * displays on the 'Sort by' step of the Widget Builder.

@@ -3,8 +3,8 @@ import styled from '@emotion/styled';
 import type {Location} from 'history';
 import omit from 'lodash/omit';
 
-import {LinkButton} from 'sentry/components/button';
 import {CompactSelect} from 'sentry/components/compactSelect';
+import {LinkButton} from 'sentry/components/core/button';
 import * as Layout from 'sentry/components/layouts/thirds';
 import {DatePageFilter} from 'sentry/components/organizations/datePageFilter';
 import {EnvironmentPageFilter} from 'sentry/components/organizations/environmentPageFilter';
@@ -54,7 +54,7 @@ type Props = {
   webVital?: WebVital;
 };
 
-export const TRANSACTIONS_LIST_TITLES: Readonly<string[]> = [
+export const TRANSACTIONS_LIST_TITLES: readonly string[] = [
   t('event id'),
   t('user'),
   t('operation duration'),
@@ -189,7 +189,7 @@ function Search(props: Props) {
 
   const handleSearch = (query: string) => {
     const queryParams = normalizeDateTimeParams({
-      ...(location.query || {}),
+      ...location.query,
       query,
     });
 
@@ -247,7 +247,7 @@ function Search(props: Props) {
       />
       <LinkButton
         to={eventView.getResultsViewUrlTarget(
-          organization.slug,
+          organization,
           false,
           hasDatasetSelector(organization) ? SavedQueryDatasets.TRANSACTIONS : undefined
         )}

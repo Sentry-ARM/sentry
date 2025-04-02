@@ -1,4 +1,3 @@
-import {useEffect, useState} from 'react';
 import {useTheme} from '@emotion/react';
 import styled from '@emotion/styled';
 import {motion} from 'framer-motion';
@@ -7,25 +6,25 @@ import {space} from 'sentry/styles/space';
 import type {PageFilters} from 'sentry/types/core';
 import {getUtcDateString} from 'sentry/utils/dates';
 import useOrganization from 'sentry/utils/useOrganization';
-import usePageFilters from 'sentry/utils/usePageFilters';
 import type {IssueView} from 'sentry/views/issueList/issueViews/issueViews';
 import {useFetchIssueCounts} from 'sentry/views/issueList/queries/useFetchIssueCounts';
 
 const TAB_MAX_COUNT = 99;
 
 const constructCountTimeFrame = (
-  pageFilters: PageFilters['datetime']
+  timeFilters: PageFilters['datetime']
 ): {
   end?: string;
   start?: string;
   statsPeriod?: string;
 } => {
-  if (pageFilters.period) {
-    return {statsPeriod: pageFilters.period};
+  if (timeFilters.period) {
+    return {statsPeriod: timeFilters.period};
   }
   return {
-    ...(pageFilters.start ? {start: getUtcDateString(pageFilters.start)} : {}),
-    ...(pageFilters.end ? {end: getUtcDateString(pageFilters.end)} : {}),
+    ...(timeFilters.start ? {start: getUtcDateString(timeFilters.start)} : {}),
+    ...(timeFilters.end ? {end: getUtcDateString(timeFilters.end)} : {}),
+    ...(timeFilters.utc ? {utc: timeFilters.utc} : {}),
   };
 };
 
@@ -35,10 +34,7 @@ interface IssueViewQueryCountProps {
 
 export function IssueViewQueryCount({view}: IssueViewQueryCountProps) {
   const organization = useOrganization();
-  const pageFilters = usePageFilters();
   const theme = useTheme();
-
-  const [count, setCount] = useState<number>(0);
 
   // TODO(msun): Once page filters are saved to views, remember to use the view's specific
   // page filters here instead of the global pageFilters, if they exist.
@@ -49,23 +45,25 @@ export function IssueViewQueryCount({view}: IssueViewQueryCountProps) {
     isError,
   } = useFetchIssueCounts({
     orgSlug: organization.slug,
-    query: [view.unsavedChanges ? view.unsavedChanges[0] : view.query],
-    project: pageFilters.selection.projects,
-    environment: pageFilters.selection.environments,
-    ...constructCountTimeFrame(pageFilters.selection.datetime),
+    query: [view.unsavedChanges?.query ?? view.query],
+    project: view.unsavedChanges?.projects ?? view.projects,
+    environment: view.unsavedChanges?.environments ?? view.environments,
+    ...constructCountTimeFrame(view.unsavedChanges?.timeFilters ?? view.timeFilters),
   });
 
-  useEffect(() => {
-    // Only update the count once the query has finished fetching
-    // This preserves the previous count while the query is fetching a new one
-    if (queryCount && !isFetching) {
-      setCount(
-        queryCount?.[view.unsavedChanges ? view.unsavedChanges[0] : view.query] ?? 0
-      );
-    } else if (isError) {
-      setCount(0);
-    }
-  }, [queryCount, isFetching, isError, view.query, view.unsavedChanges]);
+  // The endpoint's response type looks like this: { <query1>: <count>, <query2>: <count> }
+  // But this component only ever sends one query, so we can just get the count of the first key.
+  // This is a bit hacky, but it avoids having to use a state to store the previous query
+  // when the query changes and the new data is still being fetched.
+  const defaultQuery =
+    Object.keys(queryCount ?? {}).length > 0
+      ? Object.keys(queryCount ?? {})[0]
+      : undefined;
+  const count = isError
+    ? 0
+    : (queryCount?.[view.unsavedChanges?.query ?? view.query] ??
+      queryCount?.[defaultQuery ?? ''] ??
+      0);
 
   return (
     <QueryCountBubble

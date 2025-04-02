@@ -13,7 +13,7 @@ type ProjectWithBadPlatform = Omit<Project, 'platform'> & {
   platform: string;
 };
 
-function mockProjectApiResponses(projects: (Project | ProjectWithBadPlatform)[]) {
+function mockProjectApiResponses(projects: Array<Project | ProjectWithBadPlatform>) {
   MockApiClient.addMockResponse({
     method: 'GET',
     url: '/projects/org-slug/project-slug/rules/',
@@ -27,6 +27,12 @@ function mockProjectApiResponses(projects: (Project | ProjectWithBadPlatform)[])
   });
 
   MockApiClient.addMockResponse({
+    method: 'GET',
+    url: '/projects/org-slug/project-slug/overview/',
+    body: projects,
+  });
+
+  MockApiClient.addMockResponse({
     url: '/projects/org-slug/project-slug/keys/',
     method: 'GET',
     body: [ProjectKeysFixture()[0]],
@@ -35,6 +41,11 @@ function mockProjectApiResponses(projects: (Project | ProjectWithBadPlatform)[])
   MockApiClient.addMockResponse({
     url: `/projects/org-slug/project-slug/keys/${ProjectKeysFixture()[0]!.public}/`,
     method: 'PUT',
+    body: {},
+  });
+
+  MockApiClient.addMockResponse({
+    url: `/organizations/org-slug/sdks/`,
     body: {},
   });
 }

@@ -2,9 +2,9 @@ import {Fragment, useEffect, useState} from 'react';
 import styled from '@emotion/styled';
 import omit from 'lodash/omit';
 
-import {Alert} from 'sentry/components/alert';
-import {Button, LinkButton} from 'sentry/components/button';
 import {CopyToClipboardButton} from 'sentry/components/copyToClipboardButton';
+import {Alert} from 'sentry/components/core/alert';
+import {Button, LinkButton} from 'sentry/components/core/button';
 import {DateTime} from 'sentry/components/dateTime';
 import DiscoverButton from 'sentry/components/discoverButton';
 import SpanSummaryButton from 'sentry/components/events/interfaces/spans/spanSummaryButton';
@@ -179,7 +179,7 @@ function SpanDetail(props: Props) {
         data-test-id="view-child-transactions"
         size="xs"
         to={childrenEventView.getResultsViewUrlTarget(
-          organization.slug,
+          organization,
           false,
           hasDatasetSelector(organization) ? SavedQueryDatasets.TRANSACTIONS : undefined
         )}
@@ -220,7 +220,7 @@ function SpanDetail(props: Props) {
           }
 
           const target = transactionSummaryRouteWithQuery({
-            orgSlug: organization.slug,
+            organization,
             transaction: transactionResult.transaction,
             query: omit(location.query, Object.values(PAGE_URL_PARAM)),
             projectID: String(childTransaction.project_id),
@@ -276,7 +276,7 @@ function SpanDetail(props: Props) {
         <LinkButton
           size="xs"
           to={spanDetailsRouteWithQuery({
-            orgSlug: organization.slug,
+            organization,
             transaction: transactionName,
             query: location.query,
             spanSlug: {op: span.op, group: span.hash},
@@ -297,11 +297,13 @@ function SpanDetail(props: Props) {
     }
 
     return (
-      <Alert type="info" showIcon system>
-        {t(
-          'This is a span that has no parent span within this transaction. It has been attached to the transaction root span by default.'
-        )}
-      </Alert>
+      <Alert.Container>
+        <Alert type="info" showIcon system>
+          {t(
+            'This is a span that has no parent span within this transaction. It has been attached to the transaction root span by default.'
+          )}
+        </Alert>
+      </Alert.Container>
     );
   }
 
@@ -321,60 +323,65 @@ function SpanDetail(props: Props) {
       : relatedErrors.slice(0, DEFAULT_ERRORS_VISIBLE);
 
     return (
-      <Alert type={getCumulativeAlertLevelFromErrors(relatedErrors)} system>
-        <ErrorMessageTitle>
-          {tn(
-            '%s error event or performance issue is associated with this span.',
-            '%s error events or performance issues are associated with this span.',
-            relatedErrors.length
-          )}
-        </ErrorMessageTitle>
-        <Fragment>
-          {visibleErrors.map(error => (
-            <ErrorMessageContent
-              key={error.event_id}
-              excludeLevel={isErrorPerformanceError(error)}
-            >
-              {isErrorPerformanceError(error) ? (
-                <ErrorDot level="error" />
-              ) : (
-                <Fragment>
-                  <ErrorDot level={error.level} />
-                  <ErrorLevel>{error.level}</ErrorLevel>
-                </Fragment>
-              )}
+      <Alert.Container>
+        <Alert type={getCumulativeAlertLevelFromErrors(relatedErrors) ?? 'info'} system>
+          <ErrorMessageTitle>
+            {tn(
+              '%s error event or performance issue is associated with this span.',
+              '%s error events or performance issues are associated with this span.',
+              relatedErrors.length
+            )}
+          </ErrorMessageTitle>
+          <Fragment>
+            {visibleErrors.map(error => (
+              <ErrorMessageContent
+                key={error.event_id}
+                excludeLevel={isErrorPerformanceError(error)}
+              >
+                {isErrorPerformanceError(error) ? (
+                  <ErrorDot level="error" />
+                ) : (
+                  <Fragment>
+                    <ErrorDot level={error.level} />
+                    <ErrorLevel>{error.level}</ErrorLevel>
+                  </Fragment>
+                )}
 
-              <ErrorTitle>
-                <Link to={generateIssueEventTarget(error, organization)}>
-                  {error.title}
-                </Link>
-              </ErrorTitle>
-            </ErrorMessageContent>
-          ))}
-        </Fragment>
-        {relatedErrors.length > DEFAULT_ERRORS_VISIBLE && (
-          <ErrorToggle size="xs" onClick={toggleErrors}>
-            {errorsOpened ? t('Show less') : t('Show more')}
-          </ErrorToggle>
-        )}
-      </Alert>
+                <ErrorTitle>
+                  <Link to={generateIssueEventTarget(error, organization)}>
+                    {error.title}
+                  </Link>
+                </ErrorTitle>
+              </ErrorMessageContent>
+            ))}
+          </Fragment>
+          {relatedErrors.length > DEFAULT_ERRORS_VISIBLE && (
+            <ErrorToggle size="xs" onClick={toggleErrors}>
+              {errorsOpened ? t('Show less') : t('Show more')}
+            </ErrorToggle>
+          )}
+        </Alert>
+      </Alert.Container>
     );
   }
 
-  function partitionSizes(data): {
+  function partitionSizes(data: any): {
     nonSizeKeys: {[key: string]: unknown};
     sizeKeys: {[key: string]: number};
   } {
-    const sizeKeys = SIZE_DATA_KEYS.reduce((keys, key) => {
-      if (data.hasOwnProperty(key) && defined(data[key])) {
-        try {
-          keys[key] = parseInt(data[key], 10);
-        } catch (e) {
-          keys[key] = data[key];
+    const sizeKeys = SIZE_DATA_KEYS.reduce(
+      (keys, key) => {
+        if (data.hasOwnProperty(key) && defined(data[key])) {
+          try {
+            keys[key] = parseInt(data[key], 10);
+          } catch (e) {
+            keys[key] = data[key];
+          }
         }
-      }
-      return keys;
-    }, {});
+        return keys;
+      },
+      {} as Record<string, number>
+    );
 
     const nonSizeKeys = {...data};
     SIZE_DATA_KEYS.forEach(key => delete nonSizeKeys[key]);
@@ -520,12 +527,12 @@ function SpanDetail(props: Props) {
               <Row title="Duration">{durationString}</Row>
               <Row title="Operation">{span.op || ''}</Row>
               <Row title="Origin">
-                {span.origin !== undefined ? String(span.origin) : null}
+                {span.origin === undefined ? null : String(span.origin)}
               </Row>
               <Row title="Same Process as Parent">
-                {span.same_process_as_parent !== undefined
-                  ? String(span.same_process_as_parent)
-                  : null}
+                {span.same_process_as_parent === undefined
+                  ? null
+                  : String(span.same_process_as_parent)}
               </Row>
               <Row title="Span Group">
                 {defined(span.hash) ? String(span.hash) : null}
@@ -564,15 +571,15 @@ function SpanDetail(props: Props) {
                 </Row>
               ))}
               {Object.entries(nonSizeKeys).map(([key, value]) =>
-                !isHiddenDataKey(key) ? (
+                isHiddenDataKey(key) ? null : (
                   <Row title={key} key={key}>
                     {maybeStringify(value)}
                   </Row>
-                ) : null
+                )
               )}
               {unknownKeys.map(key => (
                 <Row title={key} key={key}>
-                  {maybeStringify(span[key])}
+                  {maybeStringify(span[key as never])}
                 </Row>
               ))}
             </tbody>
@@ -641,7 +648,7 @@ const StyledText = styled('p')`
   margin: ${space(2)} 0;
 `;
 
-function TextTr({children}) {
+function TextTr({children}: any) {
   return (
     <tr>
       <td className="key" />
@@ -672,10 +679,10 @@ export function Row({
   extra = null,
 }: {
   children: React.ReactNode;
-  title: JSX.Element | string | null;
+  title: React.JSX.Element | string | null;
   extra?: React.ReactNode;
   keep?: boolean;
-  prefix?: JSX.Element;
+  prefix?: React.JSX.Element;
 }) {
   if (!keep && !children) {
     return null;

@@ -5,6 +5,7 @@ import AreaSeries from 'sentry/components/charts/series/areaSeries';
 import BarSeries from 'sentry/components/charts/series/barSeries';
 import LineSeries from 'sentry/components/charts/series/lineSeries';
 import {lightenHexToRgb} from 'sentry/components/charts/utils';
+import {getChartColorPalette} from 'sentry/constants/chartPalette';
 import {t} from 'sentry/locale';
 import type {EventsStats} from 'sentry/types/organization';
 import {lightTheme as theme} from 'sentry/utils/theme';
@@ -20,7 +21,7 @@ const discoverxAxis = XAxis({
   axisLabel: {fontSize: 11, fontFamily: DEFAULT_FONT_FAMILY},
 });
 
-export const discoverCharts: RenderDescriptor<ChartType>[] = [];
+export const discoverCharts: Array<RenderDescriptor<ChartType>> = [];
 
 discoverCharts.push({
   key: ChartType.SLACK_DISCOVER_TOTAL_PERIOD,
@@ -30,7 +31,7 @@ discoverCharts.push({
       | {stats: Record<string, EventsStats>; seriesName?: string}
   ) => {
     if (Array.isArray(data.stats.data)) {
-      const color = theme.charts.getColorPalette(data.stats.data.length - 2);
+      const color = getChartColorPalette(data.stats.data.length - 2);
       const areaSeries = AreaSeries({
         name: data.seriesName,
         data: data.stats.data.map(([timestamp, countsForTimestamp]) => [
@@ -50,9 +51,9 @@ discoverCharts.push({
     }
 
     const stats = Object.keys(data.stats).map(key =>
-      Object.assign({}, {key}, data.stats[key])
+      Object.assign({}, {key}, (data.stats as any)[key])
     );
-    const color = theme.charts.getColorPalette(stats.length - 2);
+    const color = getChartColorPalette(stats.length - 2);
 
     const series = stats
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -61,7 +62,7 @@ discoverCharts.push({
           name: s.key,
           stack: 'area',
           data: s.data.map(
-            ([timestamp, countsForTimestamp]: [number, {count: number}[]]) => [
+            ([timestamp, countsForTimestamp]: [number, Array<{count: number}>]) => [
               timestamp * 1000,
               countsForTimestamp.reduce((acc, {count}) => acc + count, 0),
             ]
@@ -90,7 +91,7 @@ discoverCharts.push({
       | {stats: Record<string, EventsStats>; seriesName?: string}
   ) => {
     if (Array.isArray(data.stats.data)) {
-      const color = theme.charts.getColorPalette(data.stats.data.length - 2);
+      const color = getChartColorPalette(data.stats.data.length - 2);
 
       const barSeries = BarSeries({
         name: data.seriesName,
@@ -113,9 +114,9 @@ discoverCharts.push({
     }
 
     const stats = Object.keys(data.stats).map(key =>
-      Object.assign({}, {key}, data.stats[key])
+      Object.assign({}, {key}, (data.stats as any)[key])
     );
-    const color = theme.charts.getColorPalette(stats.length - 2);
+    const color = getChartColorPalette(stats.length - 2);
 
     const series = stats
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -124,7 +125,7 @@ discoverCharts.push({
           name: s.key,
           stack: 'area',
           data: s.data.map(
-            ([timestamp, countsForTimestamp]: [number, {count: number}[]]) => ({
+            ([timestamp, countsForTimestamp]: [number, Array<{count: number}>]) => ({
               value: [
                 timestamp * 1000,
                 countsForTimestamp.reduce((acc, {count}) => acc + count, 0),
@@ -152,7 +153,7 @@ discoverCharts.push({
     data: {stats: Record<string, EventsStats>} | {stats: EventsStats; seriesName?: string}
   ) => {
     if (Array.isArray(data.stats.data)) {
-      const color = theme.charts.getColorPalette(data.stats.data.length - 2);
+      const color = getChartColorPalette(data.stats.data.length - 2);
 
       const areaSeries = AreaSeries({
         data: data.stats.data.map(([timestamp, countsForTimestamp]) => [
@@ -173,9 +174,9 @@ discoverCharts.push({
 
     const stats = Object.values(data.stats);
     const hasOther = Object.keys(data.stats).includes('Other');
-    const color = theme.charts
-      .getColorPalette(stats.length - 2 - (hasOther ? 1 : 0))
-      ?.slice() as string[];
+    const color = getChartColorPalette(
+      stats.length - 2 - (hasOther ? 1 : 0)
+    )?.slice() as string[];
 
     if (hasOther) {
       color.push(theme.chartOther);
@@ -187,7 +188,7 @@ discoverCharts.push({
         AreaSeries({
           stack: 'area',
           data: topSeries.data.map(
-            ([timestamp, countsForTimestamp]: [number, {count: number}[]]) => [
+            ([timestamp, countsForTimestamp]: [number, Array<{count: number}>]) => [
               timestamp * 1000,
               countsForTimestamp.reduce((acc, {count}) => acc + count, 0),
             ]
@@ -214,7 +215,7 @@ discoverCharts.push({
     data: {stats: Record<string, EventsStats>} | {stats: EventsStats; seriesName?: string}
   ) => {
     if (Array.isArray(data.stats.data)) {
-      const color = theme.charts.getColorPalette(data.stats.data.length - 2);
+      const color = getChartColorPalette(data.stats.data.length - 2);
 
       const lineSeries = LineSeries({
         data: data.stats.data.map(([timestamp, countsForTimestamp]) => [
@@ -235,9 +236,9 @@ discoverCharts.push({
 
     const stats = Object.values(data.stats);
     const hasOther = Object.keys(data.stats).includes('Other');
-    const color = theme.charts
-      .getColorPalette(stats.length - 2 - (hasOther ? 1 : 0))
-      ?.slice() as string[];
+    const color = getChartColorPalette(
+      stats.length - 2 - (hasOther ? 1 : 0)
+    )?.slice() as string[];
     if (hasOther) {
       color.push(theme.chartOther);
     }
@@ -247,7 +248,7 @@ discoverCharts.push({
       .map((topSeries, i) =>
         LineSeries({
           data: topSeries.data.map(
-            ([timestamp, countsForTimestamp]: [number, {count: number}[]]) => [
+            ([timestamp, countsForTimestamp]: [number, Array<{count: number}>]) => [
               timestamp * 1000,
               countsForTimestamp.reduce((acc, {count}) => acc + count, 0),
             ]
@@ -274,7 +275,7 @@ discoverCharts.push({
     data: {stats: Record<string, EventsStats>} | {stats: EventsStats; seriesName?: string}
   ) => {
     if (Array.isArray(data.stats.data)) {
-      const color = theme.charts.getColorPalette(data.stats.data.length - 2);
+      const color = getChartColorPalette(data.stats.data.length - 2);
 
       const areaSeries = AreaSeries({
         data: data.stats.data.map(([timestamp, countsForTimestamp]) => [
@@ -295,9 +296,9 @@ discoverCharts.push({
 
     const stats = Object.values(data.stats);
     const hasOther = Object.keys(data.stats).includes('Other');
-    const color = theme.charts
-      .getColorPalette(stats.length - 2 - (hasOther ? 1 : 0))
-      ?.slice() as string[] | undefined;
+    const color = getChartColorPalette(stats.length - 2 - (hasOther ? 1 : 0))?.slice() as
+      | string[]
+      | undefined;
     if (hasOther) {
       color?.push(theme.chartOther);
     }
@@ -308,7 +309,7 @@ discoverCharts.push({
         BarSeries({
           stack: 'area',
           data: topSeries.data.map(
-            ([timestamp, countsForTimestamp]: [number, {count: number}[]]) => [
+            ([timestamp, countsForTimestamp]: [number, Array<{count: number}>]) => [
               timestamp * 1000,
               countsForTimestamp.reduce((acc, {count}) => acc + count, 0),
             ]
@@ -339,7 +340,7 @@ discoverCharts.push({
       const dataMiddleIndex = Math.floor(data.stats.data.length / 2);
       const current = data.stats.data.slice(dataMiddleIndex);
       const previous = data.stats.data.slice(0, dataMiddleIndex);
-      const color = theme.charts.getColorPalette(data.stats.data.length - 2);
+      const color = getChartColorPalette(data.stats.data.length - 2);
       const areaSeries = AreaSeries({
         name: data.seriesName,
         data: current.map(([timestamp, countsForTimestamp]) => [
@@ -369,9 +370,9 @@ discoverCharts.push({
     }
 
     const stats = Object.keys(data.stats).map(key =>
-      Object.assign({}, {key}, data.stats[key])
+      Object.assign({}, {key}, (data.stats as any)[key])
     );
-    const color = theme.charts.getColorPalette(stats.length - 2) ?? [];
+    const color = getChartColorPalette(stats.length - 2) ?? [];
     const previousPeriodColor = lightenHexToRgb(color);
 
     const areaSeries: SeriesOption[] = [];
@@ -389,10 +390,12 @@ discoverCharts.push({
             stack: 'area',
             data: s.data
               .slice(dataMiddleIndex)
-              .map(([timestamp, countsForTimestamp]: [number, {count: number}[]]) => [
-                timestamp * 1000,
-                countsForTimestamp.reduce((acc, {count}) => acc + count, 0),
-              ]),
+              .map(
+                ([timestamp, countsForTimestamp]: [number, Array<{count: number}>]) => [
+                  timestamp * 1000,
+                  countsForTimestamp.reduce((acc, {count}) => acc + count, 0),
+                ]
+              ),
             lineStyle: {color: color?.[i], opacity: 1, width: 0.4},
             areaStyle: {color: color?.[i], opacity: 1},
           })
@@ -402,7 +405,10 @@ discoverCharts.push({
             name: t('previous %s', s.key),
             stack: 'previous',
             data: previous.map(
-              ([_, countsForTimestamp]: [number, {count: number}[]], index: number) => [
+              (
+                [_, countsForTimestamp]: [number, Array<{count: number}>],
+                index: number
+              ) => [
                 current[index][0] * 1000,
                 countsForTimestamp.reduce((acc, {count}) => acc + count, 0),
               ]

@@ -21,7 +21,7 @@ import {
   vitalNameFromLocation,
 } from './vitalDetail/utils';
 
-export const DEFAULT_STATS_PERIOD = '7d';
+export const DEFAULT_STATS_PERIOD = '14d';
 export const DEFAULT_PROJECT_THRESHOLD_METRIC = 'duration';
 export const DEFAULT_PROJECT_THRESHOLD = 300;
 
@@ -47,13 +47,6 @@ export const USER_MISERY_TOOLTIP = tct(
 );
 
 const TOKEN_KEYS_SUPPORTED_IN_LIMITED_SEARCH = ['transaction'];
-
-export const getDefaultStatsPeriod = (organization: Organization) => {
-  if (organization.features.includes('performance-landing-page-stats-period')) {
-    return '14d';
-  }
-  return DEFAULT_STATS_PERIOD;
-};
 
 export enum PerformanceTerm {
   TPM = 'tpm',
@@ -424,7 +417,7 @@ export function getTermHelp(
   return PERFORMANCE_TERMS[term](organization);
 }
 
-export function prepareQueryForLandingPage(searchQuery, withStaticFilters) {
+export function prepareQueryForLandingPage(searchQuery: any, withStaticFilters: any) {
   const conditions = new MutableSearch(searchQuery);
 
   // If there is a bare text search, we want to treat it as a search
@@ -479,12 +472,12 @@ export function generateGenericPerformanceEventView(
     version: 2,
   };
 
-  const widths = Array(savedQuery.fields.length).fill(COL_WIDTH_UNDEFINED);
+  const widths = new Array(savedQuery.fields.length).fill(COL_WIDTH_UNDEFINED);
   widths[savedQuery.fields.length - 1] = '110';
   savedQuery.widths = widths;
 
   if (!query.statsPeriod && !hasStartAndEnd) {
-    savedQuery.range = getDefaultStatsPeriod(organization);
+    savedQuery.range = DEFAULT_STATS_PERIOD;
   }
   savedQuery.orderby = decodeScalar(query.sort, '-tpm');
 
@@ -499,6 +492,7 @@ export function generateGenericPerformanceEventView(
     // be present in location and will not be determined based on the project type
     const trendParameter = getCurrentTrendParameter(location, [], []);
     if (
+      // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
       WEB_VITAL_DETAILS[trendParameter.column] &&
       !organization.features.includes('performance-new-trends')
     ) {
@@ -511,8 +505,7 @@ export function generateGenericPerformanceEventView(
 
 export function generateBackendPerformanceEventView(
   location: Location,
-  withStaticFilters: boolean,
-  organization: Organization
+  withStaticFilters: boolean
 ): EventView {
   const {query} = location;
 
@@ -542,12 +535,12 @@ export function generateBackendPerformanceEventView(
     version: 2,
   };
 
-  const widths = Array(savedQuery.fields.length).fill(COL_WIDTH_UNDEFINED);
+  const widths = new Array(savedQuery.fields.length).fill(COL_WIDTH_UNDEFINED);
   widths[savedQuery.fields.length - 1] = '110';
   savedQuery.widths = widths;
 
   if (!query.statsPeriod && !hasStartAndEnd) {
-    savedQuery.range = getDefaultStatsPeriod(organization);
+    savedQuery.range = DEFAULT_STATS_PERIOD;
   }
   savedQuery.orderby = decodeScalar(query.sort, '-tpm');
 
@@ -609,12 +602,12 @@ export function generateMobilePerformanceEventView(
     version: 2,
   };
 
-  const widths = Array(savedQuery.fields.length).fill(COL_WIDTH_UNDEFINED);
+  const widths = new Array(savedQuery.fields.length).fill(COL_WIDTH_UNDEFINED);
   widths[savedQuery.fields.length - 1] = '110';
   savedQuery.widths = widths;
 
   if (!query.statsPeriod && !hasStartAndEnd) {
-    savedQuery.range = getDefaultStatsPeriod(organization);
+    savedQuery.range = DEFAULT_STATS_PERIOD;
   }
   savedQuery.orderby = decodeScalar(query.sort, '-tpm');
 
@@ -630,8 +623,7 @@ export function generateMobilePerformanceEventView(
 
 function generateFrontendPageloadPerformanceEventView(
   location: Location,
-  withStaticFilters: boolean,
-  organization: Organization
+  withStaticFilters: boolean
 ): EventView {
   const {query} = location;
 
@@ -659,12 +651,12 @@ function generateFrontendPageloadPerformanceEventView(
     version: 2,
   };
 
-  const widths = Array(savedQuery.fields.length).fill(COL_WIDTH_UNDEFINED);
+  const widths = new Array(savedQuery.fields.length).fill(COL_WIDTH_UNDEFINED);
   widths[savedQuery.fields.length - 1] = '110';
   savedQuery.widths = widths;
 
   if (!query.statsPeriod && !hasStartAndEnd) {
-    savedQuery.range = getDefaultStatsPeriod(organization);
+    savedQuery.range = DEFAULT_STATS_PERIOD;
   }
   savedQuery.orderby = decodeScalar(query.sort, '-tpm');
 
@@ -681,8 +673,7 @@ function generateFrontendPageloadPerformanceEventView(
 
 export function generateFrontendOtherPerformanceEventView(
   location: Location,
-  withStaticFilters: boolean,
-  organization: Organization
+  withStaticFilters: boolean
 ): EventView {
   const {query} = location;
 
@@ -710,12 +701,12 @@ export function generateFrontendOtherPerformanceEventView(
     version: 2,
   };
 
-  const widths = Array(savedQuery.fields.length).fill(COL_WIDTH_UNDEFINED);
+  const widths = new Array(savedQuery.fields.length).fill(COL_WIDTH_UNDEFINED);
   widths[savedQuery.fields.length - 1] = '110';
   savedQuery.widths = widths;
 
   if (!query.statsPeriod && !hasStartAndEnd) {
-    savedQuery.range = getDefaultStatsPeriod(organization);
+    savedQuery.range = DEFAULT_STATS_PERIOD;
   }
   savedQuery.orderby = decodeScalar(query.sort, '-tpm');
 
@@ -747,23 +738,11 @@ export function generatePerformanceEventView(
   const display = getCurrentLandingDisplay(location, projects, eventView);
   switch (display?.field) {
     case LandingDisplayField.FRONTEND_PAGELOAD:
-      return generateFrontendPageloadPerformanceEventView(
-        location,
-        withStaticFilters,
-        organization
-      );
+      return generateFrontendPageloadPerformanceEventView(location, withStaticFilters);
     case LandingDisplayField.FRONTEND_OTHER:
-      return generateFrontendOtherPerformanceEventView(
-        location,
-        withStaticFilters,
-        organization
-      );
+      return generateFrontendOtherPerformanceEventView(location, withStaticFilters);
     case LandingDisplayField.BACKEND:
-      return generateBackendPerformanceEventView(
-        location,
-        withStaticFilters,
-        organization
-      );
+      return generateBackendPerformanceEventView(location, withStaticFilters);
     case LandingDisplayField.MOBILE:
       return generateMobilePerformanceEventView(
         location,
@@ -777,10 +756,7 @@ export function generatePerformanceEventView(
   }
 }
 
-export function generatePerformanceVitalDetailView(
-  location: Location,
-  organization: Organization
-): EventView {
+export function generatePerformanceVitalDetailView(location: Location): EventView {
   const {query} = location;
 
   const vitalName = vitalNameFromLocation(location);
@@ -808,7 +784,7 @@ export function generatePerformanceVitalDetailView(
   };
 
   if (!query.statsPeriod && !hasStartAndEnd) {
-    savedQuery.range = getDefaultStatsPeriod(organization);
+    savedQuery.range = DEFAULT_STATS_PERIOD;
   }
   savedQuery.orderby = decodeScalar(query.sort, '-count');
 

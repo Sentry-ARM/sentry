@@ -2,7 +2,7 @@ import {act, renderHook, waitFor} from 'sentry-test/reactTestingLibrary';
 
 import {useVirtualizedTree} from 'sentry/utils/profiling/hooks/useVirtualizedTree/useVirtualizedTree';
 
-const n = d => {
+const n = (d: any) => {
   return {...d, children: []};
 };
 
@@ -32,7 +32,10 @@ class ResizeObserver {
 }
 
 window.ResizeObserver = ResizeObserver;
-window.requestAnimationFrame = (cb: Function) => cb();
+window.requestAnimationFrame = (cb: FrameRequestCallback) => {
+  cb(performance.now());
+  return 0;
+};
 
 const makeScrollContainerMock = ({height}: {height: number}) => {
   return {

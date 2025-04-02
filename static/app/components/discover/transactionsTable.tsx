@@ -2,7 +2,7 @@ import {Fragment} from 'react';
 import styled from '@emotion/styled';
 import type {Location, LocationDescriptor} from 'history';
 
-import {LinkButton} from 'sentry/components/button';
+import {LinkButton} from 'sentry/components/core/button';
 import SortLink from 'sentry/components/gridEditable/sortLink';
 import Link from 'sentry/components/links/link';
 import LoadingIndicator from 'sentry/components/loadingIndicator';
@@ -29,7 +29,7 @@ import {GridCell, GridCellNumber} from 'sentry/views/performance/styles';
 import type {TrendsDataEvents} from 'sentry/views/performance/trends/types';
 
 type Props = {
-  columnOrder: TableColumn<React.ReactText>[];
+  columnOrder: Array<TableColumn<string | number>>;
   eventView: EventView;
   isLoading: boolean;
   location: Location;
@@ -45,8 +45,8 @@ type Props = {
     ) => LocationDescriptor
   >;
   handleCellAction?: (
-    c: TableColumn<React.ReactText>
-  ) => (a: Actions, v: React.ReactText) => void;
+    c: TableColumn<string | number>
+  ) => (a: Actions, v: string | number) => void;
   referrer?: string;
   titles?: string[];
 };
@@ -127,7 +127,7 @@ function TransactionsTable(props: Props) {
   const renderRow = (
     row: TableDataRow,
     rowIndex: number,
-    colOrder: TableColumn<React.ReactText>[],
+    colOrder: Array<TableColumn<string | number>>,
     tableMeta: MetaType
   ): React.ReactNode[] => {
     const fields = eventView.getFields();
@@ -217,6 +217,7 @@ function TransactionsTable(props: Props) {
       if (!tableData.meta) {
         return;
       }
+      // @ts-expect-error TS(2345): Argument of type 'TableDataRow | TrendsTransaction... Remove this comment to see the full error message
       cells = cells.concat(renderRow(row, i, columnOrder, tableData.meta));
     });
     return cells;
@@ -250,7 +251,7 @@ function TransactionsTable(props: Props) {
 
 function getProfileAnalyticsHandler(organization: Organization, referrer?: string) {
   return () => {
-    let source;
+    let source: any;
     if (referrer === 'performance.transactions_summary') {
       source = 'performance.transactions_summary.overview';
     } else {

@@ -142,6 +142,22 @@ class GetOrganizationMemberTest(OrganizationMemberTestBase):
         role_ids = [role["id"] for role in response.data["teamRoleList"]]
         assert role_ids == ["contributor", "admin"]
 
+    def test_does_not_include_secondary_emails(self):
+        # Create a user with multiple email addresses
+        user = self.create_user("primary@example.com", username="multi_email_user")
+        self.create_useremail(user, "secondary1@example.com")
+        self.create_useremail(user, "secondary2@example.com")
+
+        # Add user to organization
+        member = self.create_member(organization=self.organization, user=user, role="member")
+
+        response = self.get_success_response(self.organization.slug, member.id)
+
+        # Check that only primary email is present and no other email addresses are exposed
+        assert response.data["email"] == "primary@example.com"
+        assert "emails" not in response.data["user"]
+        assert "emails" not in response.data.get("serializedUser", {})
+
 
 class UpdateOrganizationMemberTest(OrganizationMemberTestBase, HybridCloudTestMixin):
     method = "put"
@@ -839,6 +855,45 @@ class UpdateOrganizationMemberTest(OrganizationMemberTestBase, HybridCloudTestMi
             teamRoles=[{"teamSlug": team.slug, "role": None}],
             orgRole="manager",
         )
+
+    @patch("sentry.quotas.base.Quota.on_role_change")
+    def test_on_role_change_called_when_role_updated(self, mock_on_role_change):
+        member = self.create_user("baz@example.com")
+        member_om = self.create_member(
+            organization=self.organization, user=member, role="member", teams=[]
+        )
+
+        with outbox_runner():
+            self.get_success_response(self.organization.slug, member_om.id, role="manager")
+
+        mock_on_role_change.assert_called_once_with(
+            organization=self.organization,
+            organization_member=member_om,
+            previous_role="member",
+            new_role="manager",
+        )
+
+    @patch("sentry.quotas.base.Quota.on_role_change")
+    def test_on_role_change_not_called_when_role_unchanged(self, mock_on_role_change):
+        member = self.create_user("baz@example.com")
+        member_om = self.create_member(
+            organization=self.organization, user=member, role="member", teams=[]
+        )
+
+        # Update something else but keep role the same
+        self.get_success_response(self.organization.slug, member_om.id, teams=[])
+
+        mock_on_role_change.assert_not_called()
+
+    @patch("sentry.quotas.base.Quota.on_role_change")
+    def test_on_role_change_not_called_when_reinviting(self, mock_on_role_change):
+        member_om = self.create_member(
+            organization=self.organization, email="foo@example.com", role="member"
+        )
+
+        self.get_success_response(self.organization.slug, member_om.id, reinvite=1)
+
+        mock_on_role_change.assert_not_called()
 
 
 class DeleteOrganizationMemberTest(OrganizationMemberTestBase):

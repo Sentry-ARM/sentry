@@ -45,8 +45,8 @@ export class VideoReplayer {
   private _currentIndex: number | undefined;
   private _startTimestamp: number;
   private _timer = new Timer();
-  private _trackList: [ts: number, index: number][];
-  private _isPlaying: boolean = false;
+  private _trackList: Array<[ts: number, index: number]>;
+  private _isPlaying = false;
   private _listeners: RemoveListener[] = [];
   /**
    * Maps attachment index to the video element.
@@ -137,7 +137,7 @@ export class VideoReplayer {
   private addListeners(el: HTMLVideoElement, index: number): void {
     const handleEnded = () => this.handleSegmentEnd(index);
 
-    const handleLoadedData = event => {
+    const handleLoadedData = (event: any) => {
       // Used to correctly set the dimensions of the first frame
       if (index === 0) {
         this._callbacks.onLoaded!(event);
@@ -156,13 +156,13 @@ export class VideoReplayer {
       }
     };
 
-    const handlePlay = event => {
+    const handlePlay = (event: any) => {
       if (index === this._currentIndex) {
         this._callbacks.onLoaded!(event);
       }
     };
 
-    const handleLoadedMetaData = event => {
+    const handleLoadedMetaData = (event: any) => {
       // Only call this for current segment?
       if (index === this._currentIndex) {
         // Theoretically we could have different orientations and they should
@@ -171,9 +171,12 @@ export class VideoReplayer {
       }
     };
 
-    const handleSeeking = event => {
+    const handleSeeking = (event: any) => {
       // Centers the video when seeking (and video is not playing)
-      this._callbacks.onLoaded!(event);
+      // Only call this for the segment that's being seeked to
+      if (index === this._currentIndex) {
+        this._callbacks.onLoaded!(event);
+      }
     };
 
     el.addEventListener('ended', handleEnded);
@@ -373,7 +376,7 @@ export class VideoReplayer {
     // TODO: Handle the case where relativeOffsetMs > length of the replay/seekbar (shouldn't happen)
     return {
       segment: isExactSegment ? result : undefined,
-      previousSegment: !isExactSegment ? result : undefined,
+      previousSegment: isExactSegment ? undefined : result,
     };
   }
 
@@ -408,7 +411,12 @@ export class VideoReplayer {
 
     for (const [index, videoElem] of this._videos) {
       // On safari, some clips have a ~1 second gap in the beginning so we also need to show the previous video to hide this gap
-      if (index === (this._currentIndex || 0) - 1) {
+      // Edge case: Don't show previous video if size is different (eg. orientation changes)
+      if (
+        index === (this._currentIndex || 0) - 1 &&
+        videoElem.videoHeight === nextVideo.videoHeight &&
+        videoElem.videoWidth === nextVideo.videoWidth
+      ) {
         if (videoElem.duration) {
           // we need to set the previous video to the end so that it's shown in case the next video has a gap at the beginning
           // setting it to the end of the video causes the 'ended' bug in Chrome so we set it to 1 ms before the video ends
@@ -420,7 +428,8 @@ export class VideoReplayer {
       else {
         videoElem.style.display = 'none';
         // resets the other videos to the beginning if it's ended so it starts from the beginning on restart
-        if (videoElem.ended) {
+        // we don't do this for videos that have a duration of 0 because this will incorrectly cause handleSegmentEnd to fire.
+        if (videoElem.ended && videoElem.duration > 0) {
           this.setVideoTime(videoElem, 0);
         }
       }
@@ -538,9 +547,7 @@ export class VideoReplayer {
    * segment's timestamp and duration. Displays the closest prior segment if
    * offset exists in a gap where there is no recorded segment.
    */
-  protected async loadSegmentAtTime(
-    videoOffsetMs: number = 0
-  ): Promise<number | undefined> {
+  protected async loadSegmentAtTime(videoOffsetMs = 0): Promise<number | undefined> {
     if (!this._trackList.length) {
       return undefined;
     }
@@ -552,11 +559,11 @@ export class VideoReplayer {
     // there is no segment, because we have the previous index, we know what
     // the next index will be since segments are expected to be sorted
     const nextSegmentIndex =
-      segmentIndex !== undefined
-        ? segmentIndex
-        : previousSegmentIndex !== undefined
-          ? previousSegmentIndex + 1
-          : undefined;
+      segmentIndex === undefined
+        ? previousSegmentIndex === undefined
+          ? undefined
+          : previousSegmentIndex + 1
+        : segmentIndex;
 
     // edge case where we have a gap between start of replay and first segment
     // wait until timer reaches the first segment before starting
@@ -682,6 +689,7 @@ export class VideoReplayer {
     Object.entries(config)
       .filter(([, value]) => value !== undefined)
       .forEach(([key, value]) => {
+        // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
         this.config[key] = value;
       });
 

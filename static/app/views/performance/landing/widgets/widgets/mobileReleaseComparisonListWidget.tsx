@@ -2,10 +2,10 @@ import {Fragment, useMemo, useState} from 'react';
 import styled from '@emotion/styled';
 import pick from 'lodash/pick';
 
-import {LinkButton} from 'sentry/components/button';
 import type {RenderProps} from 'sentry/components/charts/eventsRequest';
 import EventsRequest from 'sentry/components/charts/eventsRequest';
 import {getInterval} from 'sentry/components/charts/utils';
+import {LinkButton} from 'sentry/components/core/button';
 import LoadingIndicator from 'sentry/components/loadingIndicator';
 import {normalizeDateTimeParams} from 'sentry/components/organizations/pageFilters/parse';
 import PerformanceDuration from 'sentry/components/performanceDuration';
@@ -311,7 +311,7 @@ function MobileReleaseComparisonListWidget(props: PerformanceWidgetProps) {
           valueFormatter: value =>
             tooltipFormatterUsingAggregateOutputType(value, 'duration'),
         }}
-        // @ts-expect-error error does not exist on chart?
+        // @ts-expect-error TS(2339): Property 'error' does not exist on type 'WidgetDat... Remove this comment to see the full error message
         error={provided.widgetData.chart.error}
         disableXAxis
         showLegend={false}

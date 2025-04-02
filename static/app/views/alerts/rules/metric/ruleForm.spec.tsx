@@ -16,7 +16,6 @@ import {
   AlertRuleSensitivity,
   Dataset,
 } from 'sentry/views/alerts/rules/metric/types';
-import {permissionAlertText} from 'sentry/views/settings/project/permissionAlert';
 
 jest.mock('sentry/actionCreators/indicator');
 jest.mock('sentry/utils/analytics', () => ({
@@ -31,9 +30,9 @@ jest.mock('sentry/utils/analytics', () => ({
 }));
 
 describe('Incident Rules Form', () => {
-  let organization, project, router, location, anomalies;
+  let organization: any, project: any, router: any, location: any, anomalies: any;
   // create wrapper
-  const createWrapper = props =>
+  const createWrapper = (props: any) =>
     render(
       <RuleFormContainer
         params={{orgId: organization.slug, projectId: project.slug}}
@@ -96,14 +95,6 @@ describe('Incident Rules Form', () => {
       body: EventsStatsFixture(),
     });
     MockApiClient.addMockResponse({
-      url: '/organizations/org-slug/metrics/meta/',
-      body: [],
-    });
-    MockApiClient.addMockResponse({
-      url: '/organizations/org-slug/metrics/tags/',
-      body: [],
-    });
-    MockApiClient.addMockResponse({
       method: 'GET',
       url: '/organizations/org-slug/recent-searches/',
       body: [],
@@ -132,7 +123,7 @@ describe('Incident Rules Form', () => {
       project.access = [];
       createWrapper({rule});
 
-      expect(await screen.findByText(permissionAlertText)).toBeInTheDocument();
+      expect(await screen.findByTestId('project-permission-alert')).toBeInTheDocument();
       expect(screen.queryByLabelText('Save Rule')).toBeDisabled();
     });
 
@@ -142,7 +133,7 @@ describe('Incident Rules Form', () => {
       createWrapper({rule});
 
       expect(await screen.findByLabelText('Save Rule')).toBeEnabled();
-      expect(screen.queryByText(permissionAlertText)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('project-permission-alert')).not.toBeInTheDocument();
     });
 
     it('renders time window', async () => {
@@ -157,12 +148,12 @@ describe('Incident Rules Form', () => {
       createWrapper({rule});
 
       expect(await screen.findByLabelText('Save Rule')).toBeEnabled();
-      expect(screen.queryByText(permissionAlertText)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('project-permission-alert')).not.toBeInTheDocument();
     });
   });
 
   describe('Creating a new rule', () => {
-    let createRule;
+    let createRule: any;
     beforeEach(() => {
       ProjectsStore.loadInitialData([
         project,
@@ -419,8 +410,8 @@ describe('Incident Rules Form', () => {
   });
 
   describe('Editing a rule', () => {
-    let editRule;
-    let editTrigger;
+    let editRule: any;
+    let editTrigger: any;
     const rule = MetricRuleFixture();
 
     beforeEach(() => {

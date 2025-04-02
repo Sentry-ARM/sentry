@@ -1,9 +1,9 @@
 import {useEffect, useState} from 'react';
 import styled from '@emotion/styled';
 
-import {Button, LinkButton} from 'sentry/components/button';
-import Checkbox from 'sentry/components/checkbox';
 import {Flex} from 'sentry/components/container/flex';
+import {Button, LinkButton} from 'sentry/components/core/button';
+import {Checkbox} from 'sentry/components/core/checkbox';
 import EventOrGroupHeader from 'sentry/components/eventOrGroupHeader';
 import {Tooltip} from 'sentry/components/tooltip';
 import {IconChevron, IconLink} from 'sentry/icons';
@@ -27,7 +27,7 @@ function MergedItem({fingerprint, totalFingerprint}: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [checked, setChecked] = useState(false);
 
-  function onGroupChange({unmergeState}) {
+  function onGroupChange({unmergeState}: any) {
     if (!unmergeState) {
       return;
     }
@@ -84,7 +84,7 @@ function MergedItem({fingerprint, totalFingerprint}: Props) {
   }
 
   useEffect(() => {
-    const teardown = GroupingStore.listen(data => onGroupChange(data), undefined);
+    const teardown = GroupingStore.listen((data: any) => onGroupChange(data), undefined);
     return () => {
       teardown();
     };

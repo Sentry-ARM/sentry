@@ -806,6 +806,14 @@ def get_default_comparators() -> dict[str, list[JSONScrubbingComparator]]:
                 DateUpdatedComparator("date_added", "date_updated"),
             ],
             "sentry.groupsearchview": [DateUpdatedComparator("date_updated")],
+            "sentry.groupsearchviewlastvisited": [
+                DateUpdatedComparator("last_visited", "date_added", "date_updated")
+            ],
+            "sentry.groupsearchviewstarred": [DateUpdatedComparator("date_updated", "date_added")],
+            "sentry.groupsearchviewproject": [
+                DateUpdatedComparator("date_updated"),
+                DateUpdatedComparator("date_added"),
+            ],
             "sentry.incident": [UUID4Comparator("detection_uuid")],
             "sentry.incidentactivity": [UUID4Comparator("notification_uuid")],
             "sentry.incidenttrigger": [DateUpdatedComparator("date_modified")],
@@ -821,6 +829,9 @@ def get_default_comparators() -> dict[str, list[JSONScrubbingComparator]]:
             "sentry.organizationintegration": [DateUpdatedComparator("date_updated")],
             "sentry.organizationmember": [
                 HashObfuscatingComparator("token"),
+            ],
+            "sentry.organizationmemberinvite": [
+                DateUpdatedComparator("date_updated", "date_added"),
             ],
             "sentry.projectkey": [
                 HashObfuscatingComparator("public_key", "secret_key"),
@@ -903,12 +914,10 @@ def get_default_comparators() -> dict[str, list[JSONScrubbingComparator]]:
             "workflow_engine.alertruleworkflow": [
                 DateUpdatedComparator("date_updated", "date_added")
             ],
-            "workflow_engine.alertruletriggerdatacondition": [
-                DateUpdatedComparator("date_updated", "date_added")
-            ],
             "tempest.tempestcredentials": [
                 DateUpdatedComparator("date_updated", "date_added"),
             ],
+            "explore.exploresavedquery": [DateUpdatedComparator("date_updated", "date_added")],
         },
     )
 

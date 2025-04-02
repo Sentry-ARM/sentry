@@ -3,9 +3,9 @@ import styled from '@emotion/styled';
 import classNames from 'classnames';
 
 import {openModal} from 'sentry/actionCreators/modal';
-import Tag from 'sentry/components/badge/tag';
-import {Button} from 'sentry/components/button';
 import {Chevron} from 'sentry/components/chevron';
+import {Tag} from 'sentry/components/core/badge/tag';
+import {Button} from 'sentry/components/core/button';
 import ErrorBoundary from 'sentry/components/errorBoundary';
 import {analyzeFrameForRootCause} from 'sentry/components/events/interfaces/analyzeFrames';
 import LeadHint from 'sentry/components/events/interfaces/frame/leadHint';
@@ -100,7 +100,7 @@ export interface DeprecatedLineProps {
 }
 
 interface Props extends DeprecatedLineProps {
-  components: SentryAppComponent<SentryAppSchemaStacktraceLink>[];
+  components: Array<SentryAppComponent<SentryAppSchemaStacktraceLink>>;
 }
 
 type State = {
@@ -143,7 +143,7 @@ export class DeprecatedLine extends Component<Props, State> {
     this.setState({isHovering: false});
   };
 
-  toggleContext = evt => {
+  toggleContext = (evt: any) => {
     evt?.preventDefault();
 
     this.setState({
@@ -195,7 +195,7 @@ export class DeprecatedLine extends Component<Props, State> {
     }
   }
 
-  scrollToImage = event => {
+  scrollToImage = (event: any) => {
     event.stopPropagation(); // to prevent collapsing if collapsible
 
     const {instructionAddr, addrMode} = this.props.data;
@@ -210,14 +210,14 @@ export class DeprecatedLine extends Component<Props, State> {
       ?.scrollIntoView({block: 'start', behavior: 'smooth'});
   };
 
-  scrollToSuspectRootCause = event => {
+  scrollToSuspectRootCause = (event: any) => {
     event.stopPropagation(); // to prevent collapsing if collapsible
     document
       .getElementById(SectionKey.SUSPECT_ROOT_CAUSE)
       ?.scrollIntoView({block: 'start', behavior: 'smooth'});
   };
 
-  preventCollapse = evt => {
+  preventCollapse = (evt: any) => {
     evt.stopPropagation();
   };
 
@@ -378,7 +378,7 @@ export class DeprecatedLine extends Component<Props, State> {
           <DefaultLineTagWrapper>
             {this.renderRepeats()}
             {organization?.features.includes('anr-analyze-frames') && anrCulprit ? (
-              <Tag type="warning" to="" onClick={this.scrollToSuspectRootCause}>
+              <Tag type="warning" onClick={this.scrollToSuspectRootCause}>
                 {t('Suspect Frame')}
               </Tag>
             ) : null}
@@ -501,8 +501,8 @@ const DefaultLineTitleWrapper = styled('div')<{isInAppFrame: boolean}>`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: ${p => (!p.isInAppFrame ? p.theme.subText : '')};
-  font-style: ${p => (!p.isInAppFrame ? 'italic' : '')};
+  color: ${p => (p.isInAppFrame ? '' : p.theme.subText)};
+  font-style: ${p => (p.isInAppFrame ? '' : 'italic')};
 `;
 
 const LeftLineTitle = styled('div')`

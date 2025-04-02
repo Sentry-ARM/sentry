@@ -81,7 +81,7 @@ function disableSortOptions(_widgetQuery: WidgetQuery) {
   };
 }
 
-function getTableSortOptions(_organization: Organization, _widgetQuery: WidgetQuery) {
+function getTableSortOptions(organization: Organization, _widgetQuery: WidgetQuery) {
   const sortOptions = [
     IssueSortOptions.DATE,
     IssueSortOptions.NEW,
@@ -90,7 +90,7 @@ function getTableSortOptions(_organization: Organization, _widgetQuery: WidgetQu
     IssueSortOptions.USER,
   ];
   return sortOptions.map(sortOption => ({
-    label: getSortLabel(sortOption),
+    label: getSortLabel(sortOption, organization),
     value: sortOption,
   }));
 }
@@ -118,8 +118,10 @@ export function transformIssuesResponseToTable(
     }) => {
       const transformedResultProps: Omit<TableDataRow, 'id'> = {};
       Object.keys(resultProps)
+        // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
         .filter(key => ['number', 'string'].includes(typeof resultProps[key]))
         .forEach(key => {
+          // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
           transformedResultProps[key] = resultProps[key];
         });
 

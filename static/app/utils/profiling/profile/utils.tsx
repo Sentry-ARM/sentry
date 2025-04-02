@@ -54,6 +54,51 @@ export function createContinuousProfileFrameIndex(
   return index;
 }
 
+export function createAndroidContinuousProfileFrameIndex(
+  frames: Profiling.SentryAndroidContinuousProfileChunk['shared']['frames'],
+  platform: 'mobile' | 'node' | 'javascript' | string
+): FrameIndex {
+  const index: FrameIndex = {};
+  const insertionCache: Record<string, Frame> = {};
+  let idx = -1;
+
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[i]!;
+    const frameKey = `${frame.file ?? ''}:${frame.name ?? 'unknown'}:${String(
+      frame.lineNumber
+    )}:${frame.instructionAddr ?? ''}`;
+
+    const existing = insertionCache[frameKey];
+    if (existing) {
+      index[++idx] = existing;
+      continue;
+    }
+
+    const f = new Frame(
+      {
+        key: i,
+        is_application: frame.is_application,
+        file: frame.file,
+        path: frame.path,
+        module: frame.module,
+        package: frame.package,
+        name: frame.name ?? 'unknown',
+        line: frame.lineNumber,
+        column: frame.colno ?? frame?.col ?? frame?.column,
+        instructionAddr: frame.instructionAddr,
+        symbol: frame.symbol,
+        symbolAddr: frame.symbolAddr,
+        symbolicatorStatus: frame.symbolicatorStatus,
+      },
+      platform
+    );
+    index[++idx] = f;
+    insertionCache[frameKey] = f;
+  }
+
+  return index;
+}
+
 export function createSentrySampleProfileFrameIndex(
   frames: Profiling.SentrySampledProfile['profile']['frames'],
   platform: 'mobile' | 'node' | 'javascript' | string
@@ -105,7 +150,7 @@ export function createFrameIndex(
 ): FrameIndex;
 export function createFrameIndex(
   type: 'mobile' | 'node' | 'javascript',
-  frames: Readonly<JSSelfProfiling.Frame[]>,
+  frames: readonly JSSelfProfiling.Frame[],
   trace: Readonly<JSSelfProfiling.Trace>
 ): FrameIndex;
 export function createFrameIndex(
@@ -115,13 +160,14 @@ export function createFrameIndex(
 ): FrameIndex {
   if (trace) {
     return (frames as JSSelfProfiling.Frame[]).reduce((acc, frame, index) => {
+      // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
       acc[index] = new Frame(
         {
           key: index,
           resource:
-            frame.resourceId !== undefined
-              ? trace.resources[frame.resourceId]
-              : undefined,
+            frame.resourceId === undefined
+              ? undefined
+              : trace.resources[frame.resourceId],
           ...frame,
         },
         'javascript'
@@ -131,6 +177,7 @@ export function createFrameIndex(
   }
 
   return (frames as Profiling.Schema['shared']['frames']).reduce((acc, frame, index) => {
+    // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
     acc[index] = new Frame(
       {
         key: index,
@@ -143,7 +190,7 @@ export function createFrameIndex(
   }, {});
 }
 
-type Cache<Arguments extends ReadonlyArray<any> | any, Value> = {
+type Cache<Arguments extends readonly any[] | any, Value> = {
   args: Arguments;
   value: Value;
 };
@@ -171,14 +218,13 @@ export function memoizeByReference<Arguments, Value>(
   };
 }
 
-type Arguments<F extends Function> = F extends (...args: infer A) => any ? A : never;
+export function memoizeVariadicByReference<
+  T extends (...args: any[]) => V,
+  V = ReturnType<T>,
+>(fn: T): (...t: Parameters<T>) => V {
+  let cache: Cache<Parameters<T>, V> | null = null;
 
-export function memoizeVariadicByReference<T extends (...args) => V, V = ReturnType<T>>(
-  fn: T
-): (...t: Arguments<T>) => V {
-  let cache: Cache<Arguments<T>, V> | null = null;
-
-  return function memoizeByReferenceCallback(...args: Arguments<T>): V {
+  return function memoizeByReferenceCallback(...args: Parameters<T>): V {
     // If this is the first run then eval the fn and cache the result
     if (!cache) {
       cache = {args, value: fn(...args)};
@@ -201,7 +247,11 @@ export function memoizeVariadicByReference<T extends (...args) => V, V = ReturnT
   };
 }
 
-export function wrapWithSpan<T>(parentSpan: Span | undefined, fn: () => T, options): T {
+export function wrapWithSpan<T>(
+  parentSpan: Span | undefined,
+  fn: () => T,
+  options: any
+): T {
   if (!defined(parentSpan)) {
     return fn();
   }
@@ -222,7 +272,7 @@ export const isApplicationCall = (node: CallTreeNode): boolean => {
 };
 
 function indexNodeToParents(
-  roots: Readonly<FlamegraphFrame[]>,
+  roots: readonly FlamegraphFrame[],
   map: Record<string, FlamegraphFrame[]>,
   leafs: FlamegraphFrame[]
 ) {
@@ -239,32 +289,32 @@ function indexNodeToParents(
       return;
     }
 
-    for (let i = 0; i < node.children.length; i++) {
-      indexNode(node.children[i]!, node); // iterating over non empty array
+    for (const child of node.children) {
+      indexNode(child, node);
     }
   }
 
   // Begin in each root node
-  for (let i = 0; i < roots.length; i++) {
+  for (const root of roots) {
     // If the root is a leaf node, push it to the leafs array
-    if (!roots[i]!.children?.length) {
-      leafs.push(roots[i]!);
+    if (!root.children?.length) {
+      leafs.push(root);
     }
 
     // Init the map for the root in case we havent yet
-    if (!map[roots[i]!.key]) {
-      map[roots[i]!.key] = [];
+    if (!map[root.key]) {
+      map[root.key] = [];
     }
 
     // descend down to each child and index them
-    for (let j = 0; j < roots[i]!.children.length; j++) {
-      indexNode(roots[i]!.children[j]!, roots[i]!);
+    for (const child of root.children) {
+      indexNode(child, root);
     }
   }
 }
 
 function reverseTrail(
-  nodes: Readonly<FlamegraphFrame[]>,
+  nodes: readonly FlamegraphFrame[],
   parentMap: Record<string, FlamegraphFrame[]>
 ): FlamegraphFrame[] {
   const splits: FlamegraphFrame[] = [];
@@ -290,7 +340,7 @@ function reverseTrail(
   return splits;
 }
 
-export const invertCallTree = (roots: Readonly<FlamegraphFrame[]>): FlamegraphFrame[] => {
+export const invertCallTree = (roots: readonly FlamegraphFrame[]): FlamegraphFrame[] => {
   const nodeToParentIndex: Record<string, FlamegraphFrame[]> = {};
   const leafNodes: FlamegraphFrame[] = [];
 
@@ -300,7 +350,7 @@ export const invertCallTree = (roots: Readonly<FlamegraphFrame[]>): FlamegraphFr
 };
 
 export function resolveFlamegraphSamplesProfileIds(
-  samplesProfiles: Readonly<number[][]>,
+  samplesProfiles: readonly number[][],
   profileIds: Profiling.ProfileReference[]
 ): Profiling.ProfileReference[][] {
   return samplesProfiles.map(profileIdIndices => {
@@ -313,12 +363,12 @@ interface SortableProfileSample {
 }
 
 export function sortProfileSamples<S extends SortableProfileSample>(
-  samples: Readonly<S[]>,
+  samples: readonly S[],
   stacks: Readonly<Profiling.SentrySampledProfile['profile']['stacks']>,
   frames: Readonly<Profiling.SentrySampledProfile['profile']['frames']>,
   frameFilter?: (i: number) => boolean
 ) {
-  const frameIds = [...Array(frames.length).keys()].sort((a, b) => {
+  const frameIds = [...new Array(frames.length).keys()].sort((a, b) => {
     const frameA = frames[a]!;
     const frameB = frames[b]!;
 
@@ -353,10 +403,13 @@ export function sortProfileSamples<S extends SortableProfileSample>(
     return 0;
   });
 
-  const framesMapping = frameIds.reduce((acc, frameId, idx) => {
-    acc[frameId] = idx;
-    return acc;
-  }, {});
+  const framesMapping = frameIds.reduce(
+    (acc, frameId, idx) => {
+      acc[frameId] = idx;
+      return acc;
+    },
+    {} as Record<string, number>
+  );
 
   return [...samples].sort((a, b) => {
     // same stack id, these are the same
@@ -383,8 +436,8 @@ export function sortProfileSamples<S extends SortableProfileSample>(
         continue;
       }
 
-      const frameIdxA = framesMapping[frameIdA];
-      const frameIdxB = framesMapping[frameIdB];
+      const frameIdxA = framesMapping[frameIdA]!;
+      const frameIdxB = framesMapping[frameIdB]!;
 
       // same frame idx, so check the next frame in the stack
       if (frameIdxA === frameIdxB) {

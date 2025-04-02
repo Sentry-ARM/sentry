@@ -1,7 +1,7 @@
 import styled from '@emotion/styled';
 
-import {Button} from 'sentry/components/button';
 import {CompactSelect, type SelectOption} from 'sentry/components/compactSelect';
+import {Button} from 'sentry/components/core/button';
 import {DrawerHeader} from 'sentry/components/globalDrawer/components';
 import {SpanSearchQueryBuilder} from 'sentry/components/performance/spanSearchQueryBuilder';
 import {t} from 'sentry/locale';
@@ -360,7 +360,7 @@ function ProducerMetricsRibbon({
   isLoading,
 }: {
   isLoading: boolean;
-  metrics: Partial<SpanMetricsResponse>[];
+  metrics: Array<Partial<SpanMetricsResponse>>;
 }) {
   const errorRate = 1 - (metrics[0]?.['trace_status_rate(ok)'] ?? 0);
   return (
@@ -386,7 +386,7 @@ function ConsumerMetricsRibbon({
   isLoading,
 }: {
   isLoading: boolean;
-  metrics: Partial<SpanMetricsResponse>[];
+  metrics: Array<Partial<SpanMetricsResponse>>;
 }) {
   const errorRate = 1 - (metrics[0]?.['trace_status_rate(ok)'] ?? 0);
   return (

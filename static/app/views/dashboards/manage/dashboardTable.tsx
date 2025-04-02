@@ -13,9 +13,9 @@ import {
 import {addErrorMessage, addSuccessMessage} from 'sentry/actionCreators/indicator';
 import type {Client} from 'sentry/api';
 import {ActivityAvatar} from 'sentry/components/activity/item/avatar';
-import UserAvatar from 'sentry/components/avatar/userAvatar';
-import {Button} from 'sentry/components/button';
 import {openConfirmModal} from 'sentry/components/confirm';
+import {UserAvatar} from 'sentry/components/core/avatar/userAvatar';
+import {Button} from 'sentry/components/core/button';
 import EmptyStateWarning from 'sentry/components/emptyStateWarning';
 import GridEditable, {
   COL_WIDTH_UNDEFINED,
@@ -98,6 +98,11 @@ function FavoriteButton({
           setFavorited(!favorited);
           await updateDashboardFavorite(api, organization.slug, dashboardId, !favorited);
           onDashboardsChange();
+          trackAnalytics('dashboards_manage.toggle_favorite', {
+            organization,
+            dashboard_id: dashboardId,
+            favorited: !favorited,
+          });
         } catch (error) {
           // If the api call fails, revert the state
           setFavorited(favorited);
@@ -115,7 +120,7 @@ function DashboardTable({
   onDashboardsChange,
   isLoading,
 }: Props) {
-  const columnOrder: GridColumnOrder<ResponseKeys>[] = [
+  const columnOrder: Array<GridColumnOrder<ResponseKeys>> = [
     {key: ResponseKeys.NAME, name: t('Name'), width: COL_WIDTH_UNDEFINED},
     {key: ResponseKeys.WIDGETS, name: t('Widgets'), width: COL_WIDTH_UNDEFINED},
     {key: ResponseKeys.OWNER, name: t('Owner'), width: COL_WIDTH_UNDEFINED},
@@ -169,6 +174,7 @@ function DashboardTable({
     if (column.key in SortKeys) {
       const urlSort = decodeScalar(location.query.sort, 'mydashboards');
       const isCurrentSort =
+        // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
         urlSort === SortKeys[column.key].asc || urlSort === SortKeys[column.key].desc;
       const sortDirection =
         !isCurrentSort || column.key === 'createdBy'
@@ -186,9 +192,12 @@ function DashboardTable({
           generateSortLink={() => {
             const newSort = isCurrentSort
               ? sortDirection === 'asc'
-                ? SortKeys[column.key].desc
-                : SortKeys[column.key].asc
-              : SortKeys[column.key].asc;
+                ? // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+                  SortKeys[column.key].desc
+                : // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+                  SortKeys[column.key].asc
+              : // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+                SortKeys[column.key].asc;
             return {
               ...location,
               query: {...location.query, sort: newSort},
@@ -315,6 +324,7 @@ function DashboardTable({
       );
     }
 
+    // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
     return <span>{dataRow[column.key]}</span>;
   };
 

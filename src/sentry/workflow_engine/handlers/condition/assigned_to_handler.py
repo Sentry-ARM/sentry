@@ -12,6 +12,19 @@ from sentry.workflow_engine.types import DataConditionHandler, WorkflowJob
 
 @condition_handler_registry.register(Condition.ASSIGNED_TO)
 class AssignedToConditionHandler(DataConditionHandler[WorkflowJob]):
+    type = DataConditionHandler.Type.ACTION_FILTER
+    filter_group = DataConditionHandler.FilterGroup.ISSUE_ATTRIBUTES
+
+    comparison_json_schema = {
+        "type": "object",
+        "properties": {
+            "target_type": {"type": "string", "enum": [*AssigneeTargetType]},
+            "target_identifier": {"type": ["integer", "string"]},
+        },
+        "required": ["target_type", "target_identifier"],
+        "additionalProperties": False,
+    }
+
     @staticmethod
     def get_assignees(group: Group) -> Sequence[GroupAssignee]:
         cache_key = f"group:{group.id}:assignees"

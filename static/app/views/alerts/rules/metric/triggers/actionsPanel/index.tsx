@@ -4,9 +4,9 @@ import * as Sentry from '@sentry/react';
 
 import {addErrorMessage} from 'sentry/actionCreators/indicator';
 import {openModal} from 'sentry/actionCreators/modal';
-import {Alert} from 'sentry/components/alert';
-import {Button, LinkButton} from 'sentry/components/button';
-import SelectControl from 'sentry/components/forms/controls/selectControl';
+import {Alert} from 'sentry/components/core/alert';
+import {Button, LinkButton} from 'sentry/components/core/button';
+import {Select} from 'sentry/components/core/select';
 import ListItem from 'sentry/components/list/listItem';
 import LoadingIndicator from 'sentry/components/loadingIndicator';
 import PanelItem from 'sentry/components/panels/panelItem';
@@ -58,7 +58,7 @@ type Props = {
  * @param actionConfig
  * @param dateCreated kept to maintain order of unsaved actions
  */
-const getCleanAction = (actionConfig, dateCreated?: string): Action => {
+const getCleanAction = (actionConfig: any, dateCreated?: string): Action => {
   return {
     unsavedId: uniqueId(),
     unsavedDateCreated: dateCreated ?? new Date().toISOString(),
@@ -364,7 +364,7 @@ class ActionsPanel extends PureComponent<Props> {
               <RuleRowContainer>
                 <PanelItemGrid>
                   <PanelItemSelects>
-                    <SelectControl
+                    <Select
                       name="select-level"
                       aria-label={t('Select a status level')}
                       isDisabled={disabled || loading}
@@ -381,7 +381,7 @@ class ActionsPanel extends PureComponent<Props> {
                           : levels
                       }
                     />
-                    <SelectControl
+                    <Select
                       name="select-action"
                       aria-label={t('Select an Action')}
                       isDisabled={disabled || loading}
@@ -396,12 +396,13 @@ class ActionsPanel extends PureComponent<Props> {
                     />
 
                     {availableAction && availableAction.allowedTargetTypes.length > 1 ? (
-                      <SelectControl
+                      <Select
                         isDisabled={disabled || loading}
                         value={action.targetType}
                         options={availableAction?.allowedTargetTypes?.map(
                           allowedType => ({
                             value: allowedType,
+                            // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
                             label: TargetLabel[allowedType],
                           })
                         )}
@@ -472,10 +473,11 @@ class ActionsPanel extends PureComponent<Props> {
                     {availableAction &&
                     (availableAction.type === 'opsgenie' ||
                       availableAction.type === 'pagerduty') ? (
-                      <SelectControl
+                      <Select
                         isDisabled={disabled || loading}
                         value={action.priority}
                         placeholder={
+                          // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
                           DefaultPriorities[availableAction.type][triggerIndex]
                         }
                         options={PriorityOptions[availableAction.type].map(priority => ({
@@ -568,7 +570,6 @@ const MarginlessAlert = styled(Alert)`
   border-radius: 0 0 ${p => p.theme.borderRadius} ${p => p.theme.borderRadius};
   border: 1px ${p => p.theme.border} solid;
   border-top-width: 0;
-  margin: 0;
   padding: ${space(1)} ${space(1)};
   font-size: ${p => p.theme.fontSizeSmall};
 `;

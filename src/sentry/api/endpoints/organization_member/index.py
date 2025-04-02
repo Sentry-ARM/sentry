@@ -16,7 +16,6 @@ from sentry.api.paginator import OffsetPaginator
 from sentry.api.serializers import serialize
 from sentry.api.serializers.models.organization_member import OrganizationMemberSerializer
 from sentry.api.serializers.models.organization_member.response import OrganizationMemberResponse
-from sentry.api.validators import AllowedEmailField
 from sentry.apidocs.constants import RESPONSE_FORBIDDEN, RESPONSE_NOT_FOUND, RESPONSE_UNAUTHORIZED
 from sentry.apidocs.examples.organization_member_examples import OrganizationMemberExamples
 from sentry.apidocs.parameters import GlobalParams
@@ -28,6 +27,7 @@ from sentry.models.team import Team, TeamStatus
 from sentry.roles import organization_roles, team_roles
 from sentry.search.utils import tokenize_query
 from sentry.signals import member_invited
+from sentry.users.api.parsers.email import AllowedEmailField
 from sentry.users.services.user.service import user_service
 from sentry.utils import metrics
 
@@ -277,12 +277,12 @@ class OrganizationMemberIndexEndpoint(OrganizationEndpoint):
                     else:
                         queryset = queryset.exclude(user_id__in=externalactor_user_ids)
                 elif key == "query":
-                    value = " ".join(value)
+                    value_s = " ".join(value)
                     query_user_ids = user_service.get_many_ids(
-                        filter=dict(query=value, organization_id=organization.id)
+                        filter=dict(query=value_s, organization_id=organization.id)
                     )
                     queryset = queryset.filter(
-                        Q(user_id__in=query_user_ids) | Q(email__icontains=value)
+                        Q(user_id__in=query_user_ids) | Q(email__icontains=value_s)
                     )
                 else:
                     queryset = queryset.none()
@@ -318,7 +318,11 @@ class OrganizationMemberIndexEndpoint(OrganizationEndpoint):
         """
         Add or invite a member to an organization.
         """
-        assigned_org_role = request.data.get("orgRole") or request.data.get("role")
+        assigned_org_role = (
+            request.data.get("orgRole")
+            or request.data.get("role")
+            or organization_roles.get_default().id
+        )
         billing_bypass = assigned_org_role == "billing" and features.has(
             "organizations:invite-billing", organization
         )
@@ -376,9 +380,9 @@ class OrganizationMemberIndexEndpoint(OrganizationEndpoint):
         members_can_only_invite_to_members_teams = (
             not organization.flags.allow_joinleave and not organization.flags.disable_member_invite
         )
-        has_team_roles = "teamRoles" in result and bool(result["teamRoles"])
+        has_teams = bool(result.get("teamRoles") or result.get("teams"))
 
-        if is_member and members_can_only_invite_to_members_teams and has_team_roles:
+        if is_member and members_can_only_invite_to_members_teams and has_teams:
             requester_teams = set(
                 OrganizationMember.objects.filter(
                     organization=organization,
@@ -386,7 +390,12 @@ class OrganizationMemberIndexEndpoint(OrganizationEndpoint):
                     user_is_active=True,
                 ).values_list("teams__slug", flat=True)
             )
-            team_slugs = [team.slug for team, _ in result.get("teamRoles")]
+            team_slugs = list(
+                set(
+                    [team.slug for team, _ in result.get("teamRoles", [])]
+                    + [team.slug for team in result.get("teams", [])]
+                )
+            )
             # ensure that the requester is a member of all teams they are trying to assign
             if not requester_teams.issuperset(team_slugs):
                 return Response(
@@ -394,10 +403,7 @@ class OrganizationMemberIndexEndpoint(OrganizationEndpoint):
                     status=400,
                 )
 
-        if (
-            ("teamRoles" in result and result["teamRoles"])
-            or ("teams" in result and result["teams"])
-        ) and not organization_roles.get(assigned_org_role).is_team_roles_allowed:
+        if has_teams and not organization_roles.get(assigned_org_role).is_team_roles_allowed:
             return Response(
                 {
                     "email": f"The user with a '{assigned_org_role}' role cannot have team-level permissions."

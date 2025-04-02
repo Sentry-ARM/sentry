@@ -2,11 +2,6 @@ import type {Actor, ObjectStatus} from 'sentry/types/core';
 import type {Project} from 'sentry/types/project';
 import type {ColorOrAlias} from 'sentry/utils/theme';
 
-export enum MonitorType {
-  UNKNOWN = 'unknown',
-  CRON_JOB = 'cron_job',
-}
-
 /**
  * Some old monitor configurations do NOT have a schedule_type
  *
@@ -41,21 +36,21 @@ interface BaseConfig {
    * How long (in minutes) after the expected check-in time will we wait until
    * we consider the check-in to have been missed.
    */
-  checkin_margin: number;
+  checkin_margin: number | null;
   /**
    * How long (in minutes) is the check-in allowed to run for in
    * CheckInStatus.IN_PROGRESS before it is considered failed.
    */
-  max_runtime: number;
+  max_runtime: number | null;
   /**
    * tz database style timezone string
    */
-  timezone: string;
+  timezone: string | null;
   /**
    * The id of thee "shadow" alert rule generated when alert assignees are
    * selected
    */
-  alert_rule_id?: number;
+  alert_rule_id?: number | null;
   /**
    * How many consecutive missed or failed check-ins in a row before creating a
    * new issue.
@@ -127,7 +122,6 @@ export interface Monitor {
   project: Project;
   slug: string;
   status: ObjectStatus;
-  type: MonitorType;
   alertRule?: {
     targets: Array<{
       targetIdentifier: number;
@@ -177,9 +171,9 @@ export interface CheckIn {
    */
   status: CheckInStatus;
   /**
-   * Groups associated to this check-in (determiend by traceId)
+   * Groups associated to this check-in (determined by traceId)
    */
-  groups?: {id: number; shortId: string}[];
+  groups?: Array<{id: number; shortId: string}>;
 }
 
 type StatsBucket = {

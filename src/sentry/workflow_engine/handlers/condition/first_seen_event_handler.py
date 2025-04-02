@@ -19,6 +19,9 @@ def is_new_event(job: WorkflowJob) -> bool:
 
 @condition_handler_registry.register(Condition.FIRST_SEEN_EVENT)
 class FirstSeenEventConditionHandler(DataConditionHandler[WorkflowJob]):
+    type = DataConditionHandler.Type.WORKFLOW_TRIGGER
+    comparison_json_schema = {"type": "boolean"}
+
     @staticmethod
     def evaluate_value(job: WorkflowJob, comparison: Any) -> bool:
         return is_new_event(job)

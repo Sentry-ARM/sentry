@@ -1,7 +1,7 @@
 import styled from '@emotion/styled';
 
 import {openModal} from 'sentry/actionCreators/modal';
-import {Button} from 'sentry/components/button';
+import {Button} from 'sentry/components/core/button';
 import {t} from 'sentry/locale';
 import PluginIcon from 'sentry/plugins/components/pluginIcon';
 import {space} from 'sentry/styles/space';
@@ -63,7 +63,7 @@ function SetupMessagingIntegrationButton({
     messagingIntegrationsQuery.isError ||
     integrationProvidersQuery.some(({isPending}) => isPending) ||
     integrationProvidersQuery.some(({isError}) => isError) ||
-    integrationProvidersQuery[0]!.data == null
+    integrationProvidersQuery[0]!.data === undefined
   ) {
     return null;
   }
@@ -75,7 +75,7 @@ function SetupMessagingIntegrationButton({
   return (
     <IntegrationFeatures
       organization={organization}
-      features={integrationProvidersQuery[0]!.data.providers[0]!?.metadata?.features}
+      features={integrationProvidersQuery[0]!.data.providers[0]?.metadata?.features!}
     >
       {({disabled, disabledReason}) => (
         <div>

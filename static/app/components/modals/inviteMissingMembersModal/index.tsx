@@ -3,9 +3,9 @@ import {css} from '@emotion/react';
 import styled from '@emotion/styled';
 
 import type {ModalRenderProps} from 'sentry/actionCreators/modal';
-import {Button} from 'sentry/components/button';
 import ButtonBar from 'sentry/components/buttonBar';
-import Checkbox from 'sentry/components/checkbox';
+import {Button} from 'sentry/components/core/button';
+import {Checkbox} from 'sentry/components/core/checkbox';
 import LoadingIndicator from 'sentry/components/loadingIndicator';
 import {StatusMessage} from 'sentry/components/modals/inviteMembersModal/inviteStatusMessage';
 import type {InviteStatus} from 'sentry/components/modals/inviteMembersModal/types';
@@ -205,7 +205,7 @@ export function InviteMissingMembersModal({
     return tct('Invite [prefix][memberCount] missing member[isPlural]', {
       prefix: memberInvites.length === selectedCount ? 'all ' : '',
       memberCount: selectedCount === 0 ? '' : selectedCount,
-      isPlural: selectedCount !== 1 ? 's' : '',
+      isPlural: selectedCount === 1 ? '' : 's',
     });
   };
 
@@ -277,7 +277,9 @@ export function InviteMissingMembersModal({
                 data-test-id="select-teams"
                 disabled={!isTeamRolesAllowed}
                 placeholder={isTeamRolesAllowed ? t('None') : t('Role cannot join teams')}
-                onChange={opts => setTeams(opts ? opts.map(v => v.value) : [], i)}
+                onChange={(opts: any) =>
+                  setTeams(opts ? opts.map((v: any) => v.value) : [], i)
+                }
                 multiple
                 clearable
                 menuPortalTarget={modalContainerRef?.current}

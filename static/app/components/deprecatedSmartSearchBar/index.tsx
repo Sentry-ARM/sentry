@@ -9,6 +9,7 @@ import {addErrorMessage} from 'sentry/actionCreators/indicator';
 import {fetchRecentSearches, saveRecentSearch} from 'sentry/actionCreators/savedSearches';
 import type {Client} from 'sentry/api';
 import ButtonBar from 'sentry/components/buttonBar';
+import {Button} from 'sentry/components/core/button';
 import {normalizeDateTimeParams} from 'sentry/components/organizations/pageFilters/parse';
 import type {
   BooleanOperator,
@@ -57,7 +58,6 @@ import withSentryRouter from 'sentry/utils/withSentryRouter';
 import type {MenuItemProps} from '../dropdownMenu';
 import {DropdownMenu} from '../dropdownMenu';
 
-import {ActionButton} from './actionButton';
 import SearchBarDatePicker from './searchBarDatePicker';
 import SearchDropdown from './searchDropdown';
 import SearchHotkeysListener from './searchHotkeysListener';
@@ -297,6 +297,7 @@ type Props = WithRouterProps &
      * A function that returns a warning message for a given filter key
      * will only show a render a warning if the value is truthy
      */
+    // @ts-expect-error TS(7006): Parameter 'key' implicitly has an 'any' type.
     getFilterWarning?: (key) => React.ReactNode;
     /**
      * List user's recent searches
@@ -359,7 +360,11 @@ type Props = WithRouterProps &
     /**
      * Get a list of tag values for the passed tag
      */
-    onGetTagValues?: (tag: Tag, query: string, params: object) => Promise<string[]>;
+    onGetTagValues?: (
+      tag: Tag,
+      query: string,
+      params: Record<PropertyKey, unknown>
+    ) => Promise<string[]>;
     /**
      * Called on key down
      */
@@ -379,7 +384,7 @@ type Props = WithRouterProps &
     /**
      * Projects that the search bar queries over
      */
-    projectIds?: number[] | Readonly<number[]>;
+    projectIds?: number[] | readonly number[];
     /**
      * Indicates the usage of the search bar for analytics
      */
@@ -516,7 +521,7 @@ class DeprecatedSmartSearchBar extends Component<DefaultProps & Props, State> {
 
   get initialQuery() {
     const {query, defaultQuery} = this.props;
-    return query !== null ? addSpace(query) : defaultQuery ?? '';
+    return query === null ? (defaultQuery ?? '') : addSpace(query);
   }
 
   makeQueryState(query: string) {
@@ -643,7 +648,7 @@ class DeprecatedSmartSearchBar extends Component<DefaultProps & Props, State> {
     }
   }
 
-  moveToNextToken = (filterTokens: TokenResult<Token.FILTER>[]) => {
+  moveToNextToken = (filterTokens: Array<TokenResult<Token.FILTER>>) => {
     const token = this.cursorToken;
 
     if (this.searchInput.current && filterTokens.length > 0) {
@@ -1228,9 +1233,9 @@ class DeprecatedSmartSearchBar extends Component<DefaultProps & Props, State> {
     };
   }
 
-  get filterTokens(): TokenResult<Token.FILTER>[] {
+  get filterTokens(): Array<TokenResult<Token.FILTER>> {
     return (this.state.parsedQuery?.filter(tok => tok.type === Token.FILTER) ??
-      []) as TokenResult<Token.FILTER>[];
+      []) as Array<TokenResult<Token.FILTER>>;
   }
 
   /**
@@ -1250,11 +1255,11 @@ class DeprecatedSmartSearchBar extends Component<DefaultProps & Props, State> {
       tree: parsedQuery,
       noResultValue: null,
       visitorTest: ({token, returnResult, skipToken}) =>
-        !matchedTokens.includes(token.type)
-          ? null
-          : isWithinToken(token, cursor)
+        matchedTokens.includes(token.type)
+          ? isWithinToken(token, cursor)
             ? returnResult(token)
-            : skipToken,
+            : skipToken
+          : null,
     });
   }
 
@@ -1506,9 +1511,9 @@ class DeprecatedSmartSearchBar extends Component<DefaultProps & Props, State> {
 
     // filter existing items immediately, until API can return
     // with actual tag value results
-    const filteredSearchGroups = !preparedQuery
-      ? this.state.searchGroups
-      : this.state.searchGroups.filter(item => item.value?.includes(preparedQuery));
+    const filteredSearchGroups = preparedQuery
+      ? this.state.searchGroups.filter(item => item.value?.includes(preparedQuery))
+      : this.state.searchGroups;
 
     this.setState({
       searchTerm: query,
@@ -1568,7 +1573,7 @@ class DeprecatedSmartSearchBar extends Component<DefaultProps & Props, State> {
 
   showDefaultSearches = async () => {
     const {query} = this.state;
-    const [defaultSearchItems, defaultRecentItems] = this.props.defaultSearchItems!;
+    const [defaultSearchItems, defaultRecentItems] = this.props.defaultSearchItems;
 
     // Always clear searchTerm on showing default state.
     this.setState({searchTerm: ''});
@@ -2101,13 +2106,13 @@ class DeprecatedSmartSearchBar extends Component<DefaultProps & Props, State> {
 
         <InputWrapper>
           <Highlight>
-            {parsedQuery !== null ? (
+            {parsedQuery === null ? (
+              query
+            ) : (
               <HighlightQuery
                 parsedQuery={parsedQuery}
                 cursorPosition={this.state.showDropdown ? cursor : -1}
               />
-            ) : (
-              query
             )}
           </Highlight>
           {useFormWrapper ? <form onSubmit={this.onSubmit}>{input}</form> : input}
@@ -2116,7 +2121,10 @@ class DeprecatedSmartSearchBar extends Component<DefaultProps & Props, State> {
         <ActionsBar gap={0.5}>
           {query !== '' && !disabled && (
             <ActionButton
+              type="button"
               onClick={this.clearSearch}
+              borderless
+              size="zero"
               icon={<IconClose size="xs" />}
               title={t('Clear search')}
               aria-label={t('Clear search')}
@@ -2129,7 +2137,9 @@ class DeprecatedSmartSearchBar extends Component<DefaultProps & Props, State> {
               trigger={props => (
                 <ActionButton
                   {...props}
+                  type="button"
                   size="sm"
+                  borderless
                   aria-label={t('Show more')}
                   icon={<VerticalEllipsisIcon />}
                 />
@@ -2212,7 +2222,7 @@ export type {Props as SmartSearchBarProps};
 export {DeprecatedSmartSearchBar};
 
 const Container = styled('div')<{inputHasFocus: boolean}>`
-  min-height: ${p => p.theme.form.md.height}px;
+  min-height: ${p => p.theme.form.md.height};
   border: ${p =>
     p.inputHasFocus ? `1px solid ${p.theme.focusBorder}` : `1px solid ${p.theme.border}`};
   box-shadow: ${p =>
@@ -2308,4 +2318,22 @@ const VerticalEllipsisIcon = styled(IconEllipsis)`
 
 const OverlowingActionsMenu = styled(DropdownMenu)`
   display: flex;
+`;
+
+const ActionButton = styled(Button)<{isActive?: boolean}>`
+  color: ${p => (p.isActive ? p.theme.linkColor : p.theme.subText)};
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  min-height: auto;
+
+  &,
+  &:hover,
+  &:focus {
+    background: transparent;
+  }
+
+  &:hover {
+    color: ${p => p.theme.gray400};
+  }
 `;

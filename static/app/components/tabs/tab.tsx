@@ -78,7 +78,7 @@ export const BaseTab = forwardRef(
 
     const ref = useObjectRef(forwardedRef);
     const InnerWrap = useCallback(
-      ({children}) =>
+      ({children}: any) =>
         to ? (
           <TabLink
             to={to}
@@ -305,7 +305,7 @@ const innerWrapStyles = ({
   align-items: center;
   position: relative;
   height: calc(
-    ${theme.form.sm.height}px + ${orientation === 'horizontal' ? space(0.75) : '0px'}
+    ${theme.form.sm.height} + ${orientation === 'horizontal' ? space(0.75) : '0px'}
   );
   border-radius: ${theme.borderRadius};
   transform: translateY(1px);

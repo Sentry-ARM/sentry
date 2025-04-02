@@ -36,13 +36,13 @@ export default class PercentageAreaChart extends Component<Props> {
   static defaultProps: DefaultProps = {
     // TODO(billyvg): Move these into BaseChart? or get rid completely
     getDataItemName: ({name}) => name,
-    getValue: ({value}, total) => (!total ? 0 : Math.round((value / total) * 1000) / 10),
+    getValue: ({value}, total) => (total ? Math.round((value / total) * 1000) / 10 : 0),
   };
 
   getSeries() {
     const {series, getDataItemName, getValue} = this.props;
 
-    const totalsArray: [string | number, number][] = series.length
+    const totalsArray: Array<[string | number, number]> = series.length
       ? series[0]!.data.map(({name}, i) => [
           name,
           series.reduce((sum, {data}) => sum + data[i]!.value, 0),
@@ -77,18 +77,19 @@ export default class PercentageAreaChart extends Component<Props> {
 
             // Filter series that have 0 counts
             const date = `${
-              series.length && moment(series[0].data[0]).format('MMM D, YYYY')
+              series.length && moment((series as any)[0].data[0]).format('MMM D, YYYY')
             }<br />`;
 
             return [
               '<div class="tooltip-series">',
               series
                 .filter(
-                  ({seriesName, data}) => data[1] > 0.001 && seriesName !== FILLER_NAME
+                  ({seriesName, data}) =>
+                    (data as any)[1] > 0.001 && seriesName !== FILLER_NAME
                 )
                 .map(
                   ({marker, seriesName, data}) =>
-                    `<div><span class="tooltip-label">${marker} <strong>${seriesName}</strong></span> ${data[1]}%</div>`
+                    `<div><span class="tooltip-label">${marker} <strong>${seriesName}</strong></span> ${(data as any)[1]}%</div>`
                 )
                 .join(''),
               '</div>',

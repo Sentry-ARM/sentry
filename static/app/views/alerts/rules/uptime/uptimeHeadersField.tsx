@@ -1,11 +1,11 @@
 import {useEffect, useState} from 'react';
 import styled from '@emotion/styled';
 
-import {Button} from 'sentry/components/button';
+import {Button} from 'sentry/components/core/button';
+import {Input} from 'sentry/components/core/input';
 import type {FormFieldProps} from 'sentry/components/forms/formField';
 import FormField from 'sentry/components/forms/formField';
 import FormFieldControlState from 'sentry/components/forms/formField/controlState';
-import Input from 'sentry/components/input';
 import {IconAdd, IconDelete} from 'sentry/icons';
 import {t} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
@@ -21,14 +21,14 @@ type HeaderEntry = [id: string, name: string, value: string];
 // XXX(epurkhiser): The types of the FormField render props are absolutely
 // abysmal, so we're leaving this untyped for now.
 
-function UptimHeadersControl(props) {
+function UptimHeadersControl(props: any) {
   const {onChange, onBlur, disabled, model, name, value} = props;
 
   // Store itmes in local state so we can add empty values without persisting
   // those into the form model.
   const [items, setItems] = useState<HeaderEntry[]>(
     Object.keys(value).length > 0
-      ? value.map(v => [uniqueId(), ...v] as HeaderEntry)
+      ? value.map((v: any) => [uniqueId(), ...v] as HeaderEntry)
       : [[uniqueId(), '', '']]
   );
 

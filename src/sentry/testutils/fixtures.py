@@ -5,9 +5,11 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import pytest
+from django.db.utils import IntegrityError
 from django.utils import timezone
 from django.utils.functional import cached_property
 
+from sentry.constants import ObjectStatus
 from sentry.eventstore.models import Event
 from sentry.grouping.grouptype import ErrorGroupType
 from sentry.incidents.models.alert_rule import AlertRule
@@ -23,7 +25,14 @@ from sentry.models.project import Project
 from sentry.models.projecttemplate import ProjectTemplate
 from sentry.models.rule import Rule
 from sentry.models.team import Team
-from sentry.monitors.models import Monitor, MonitorType, ScheduleType
+from sentry.monitors.models import (
+    Monitor,
+    MonitorCheckIn,
+    MonitorEnvironment,
+    MonitorIncident,
+    MonitorType,
+    ScheduleType,
+)
 from sentry.organizations.services.organization import RpcOrganization
 from sentry.silo.base import SiloMode
 from sentry.tempest.models import TempestCredentials
@@ -41,6 +50,7 @@ from sentry.uptime.models import (
     ProjectUptimeSubscriptionMode,
     UptimeStatus,
     UptimeSubscription,
+    UptimeSubscriptionRegion,
 )
 from sentry.users.models.identity import Identity, IdentityProvider
 from sentry.users.models.user import User
@@ -61,12 +71,16 @@ class Fixtures:
 
     @cached_property
     def user(self) -> User:
-        return self.create_user(
-            "admin@localhost",
-            is_superuser=True,
-            is_staff=True,
-            is_sentry_app=False,
-        )
+        try:
+            return self.create_user(
+                "admin@localhost",
+                is_superuser=True,
+                is_staff=True,
+                is_sentry_app=False,
+            )
+        except IntegrityError:
+            with assume_test_silo_mode(SiloMode.CONTROL):
+                return User.objects.get(email="admin@localhost")
 
     @cached_property
     def organization(self):
@@ -434,9 +448,14 @@ class Fixtures:
         if "owner_user_id" not in kwargs:
             kwargs["owner_user_id"] = self.user.id
 
+        if "project" not in kwargs:
+            project_id = self.project.id
+        else:
+            project_id = kwargs.pop("project").id
+
         return Monitor.objects.create(
             organization_id=self.organization.id,
-            project_id=self.project.id,
+            project_id=project_id,
             type=MonitorType.CRON_JOB,
             config={
                 "schedule": "* * * * *",
@@ -446,6 +465,15 @@ class Fixtures:
             },
             **kwargs,
         )
+
+    def create_monitor_environment(self, **kwargs):
+        return MonitorEnvironment.objects.create(**kwargs)
+
+    def create_monitor_incident(self, **kwargs):
+        return MonitorIncident.objects.create(**kwargs)
+
+    def create_monitor_checkin(self, **kwargs):
+        return MonitorCheckIn.objects.create(**kwargs)
 
     def create_external_user(self, user=None, organization=None, integration=None, **kwargs):
         if not user:
@@ -653,6 +681,7 @@ class Fixtures:
         status: UptimeSubscription.Status = UptimeSubscription.Status.ACTIVE,
         url: str | None = None,
         host_provider_id="TEST",
+        host_provider_name="TEST",
         url_domain="sentry",
         url_domain_suffix="io",
         interval_seconds=60,
@@ -679,6 +708,7 @@ class Fixtures:
             url_domain=url_domain,
             url_domain_suffix=url_domain_suffix,
             host_provider_id=host_provider_id,
+            host_provider_name=host_provider_name,
             interval_seconds=interval_seconds,
             timeout_ms=timeout_ms,
             date_updated=date_updated,
@@ -688,24 +718,37 @@ class Fixtures:
             trace_sampling=trace_sampling,
         )
         for region_slug in region_slugs:
-            Factories.create_uptime_subscription_region(subscription, region_slug)
+            self.create_uptime_subscription_region(subscription, region_slug)
 
         return subscription
+
+    def create_uptime_subscription_region(
+        self,
+        subscription: UptimeSubscription,
+        region_slug: str,
+        mode: UptimeSubscriptionRegion.RegionMode = UptimeSubscriptionRegion.RegionMode.ACTIVE,
+    ):
+        Factories.create_uptime_subscription_region(subscription, region_slug, mode)
 
     def create_project_uptime_subscription(
         self,
         project: Project | None = None,
         env: Environment | None = None,
         uptime_subscription: UptimeSubscription | None = None,
+        status: int = ObjectStatus.ACTIVE,
         mode=ProjectUptimeSubscriptionMode.AUTO_DETECTED_ACTIVE,
         name: str | None = None,
         owner: User | Team | None = None,
         uptime_status=UptimeStatus.OK,
+        uptime_status_update_date: datetime | None = None,
+        id: int | None = None,
     ) -> ProjectUptimeSubscription:
         if project is None:
             project = self.project
         if env is None:
             env = self.environment
+        if uptime_status_update_date is None:
+            uptime_status_update_date = timezone.now()
 
         if uptime_subscription is None:
             uptime_subscription = self.create_uptime_subscription()
@@ -713,10 +756,13 @@ class Fixtures:
             project,
             env,
             uptime_subscription,
+            status,
             mode,
             name,
             Actor.from_object(owner) if owner else None,
             uptime_status,
+            uptime_status_update_date,
+            id,
         )
 
     @pytest.fixture(autouse=True)

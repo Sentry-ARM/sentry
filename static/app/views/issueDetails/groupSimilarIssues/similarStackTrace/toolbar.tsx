@@ -2,8 +2,8 @@ import {Component} from 'react';
 import styled from '@emotion/styled';
 
 import {addSuccessMessage} from 'sentry/actionCreators/indicator';
-import {Button} from 'sentry/components/button';
 import Confirm from 'sentry/components/confirm';
+import {Button} from 'sentry/components/core/button';
 import PanelHeader from 'sentry/components/panels/panelHeader';
 import ToolbarHeader from 'sentry/components/toolbarHeader';
 import {t} from 'sentry/locale';
@@ -36,7 +36,7 @@ class SimilarToolbar extends Component<Props, State> {
     this.listener?.();
   }
 
-  onGroupChange = ({mergeList}) => {
+  onGroupChange = ({mergeList}: any) => {
     if (!mergeList?.length) {
       this.setState({mergeCount: 0});
       return;

@@ -1,10 +1,10 @@
 import {Fragment, useEffect, useMemo, useState} from 'react';
 import styled from '@emotion/styled';
 
-import {Button} from 'sentry/components/button';
 import ButtonBar from 'sentry/components/buttonBar';
 import {CommitRow} from 'sentry/components/commitRow';
 import {Flex} from 'sentry/components/container/flex';
+import {Button} from 'sentry/components/core/button';
 import ErrorBoundary from 'sentry/components/errorBoundary';
 import {getLockReason} from 'sentry/components/events/interfaces/threads/threadSelector/lockReason';
 import {
@@ -52,7 +52,7 @@ type ExceptionProps = React.ComponentProps<typeof ExceptionContent>;
 
 type Props = Pick<ExceptionProps, 'groupingCurrentLevel'> & {
   data: {
-    values?: Array<Thread>;
+    values?: Thread[];
   };
   event: Event;
   group: Group | undefined;
@@ -243,7 +243,7 @@ export function Threads({data, event, projectSlug, groupingCurrentLevel, group}:
   const hideThreadTags = activeThreadId === undefined || !activeThreadName;
 
   function handleChangeThread(direction: 'previous' | 'next') {
-    const currentIndex = threads.findIndex(thread => thread.id === activeThreadId);
+    const currentIndex = threads.findIndex((thread: any) => thread.id === activeThreadId);
     let nextIndex = direction === 'previous' ? currentIndex - 1 : currentIndex + 1;
     if (nextIndex < 0) {
       nextIndex = threads.length - 1;

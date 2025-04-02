@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
+from sentry import onboarding_tasks
 from sentry.api.invite_helper import ApiInviteHelper
 from sentry.models.options.organization_option import OrganizationOption
 from sentry.models.organizationonboardingtask import (
@@ -14,7 +15,6 @@ from sentry.models.organizationonboardingtask import (
 from sentry.models.project import Project
 from sentry.models.rule import Rule
 from sentry.organizations.services.organization import organization_service
-from sentry.plugins.bases.issue import IssueTrackingPlugin
 from sentry.signals import (
     alert_rule_created,
     event_processed,
@@ -22,10 +22,8 @@ from sentry.signals import (
     first_replay_received,
     first_transaction_received,
     integration_added,
-    issue_tracker_used,
     member_invited,
     member_joined,
-    plugin_enabled,
     project_created,
     transaction_processed,
 )
@@ -139,6 +137,32 @@ class OrganizationOnboardingTaskTest(TestCase):
             status=OnboardingTaskStatus.COMPLETE,
         )
         assert task is not None
+
+    @patch("sentry.analytics.record")
+    def test_project_created_with_origin(self, record_analytics):
+        project = self.create_project()
+        project_created.send(
+            project=project, user=self.user, default_rules=False, sender=type(project), origin="ui"
+        )
+
+        task = OrganizationOnboardingTask.objects.get(
+            organization=self.organization,
+            task=OnboardingTask.FIRST_PROJECT,
+            status=OnboardingTaskStatus.COMPLETE,
+        )
+        assert task is not None
+
+        # Verify origin is passed to analytics event
+        record_analytics.assert_called_with(
+            "project.created",
+            user_id=self.user.id,
+            default_user_id=self.organization.default_owner_id,
+            organization_id=self.organization.id,
+            project_id=project.id,
+            platform=project.platform,
+            updated_empty_state=False,
+            origin="ui",
+        )
 
     def test_first_event_received(self):
         now = timezone.now()
@@ -273,33 +297,6 @@ class OrganizationOnboardingTaskTest(TestCase):
             status=OnboardingTaskStatus.COMPLETE,
         )
         assert task.data["invited_member_id"] == om.id
-
-    def test_issue_tracker_onboarding(self):
-        plugin_enabled.send(
-            plugin=IssueTrackingPlugin(),
-            project=self.project,
-            user=self.user,
-            sender=type(IssueTrackingPlugin),
-        )
-        task = OrganizationOnboardingTask.objects.get(
-            organization=self.organization,
-            task=OnboardingTask.ISSUE_TRACKER,
-            status=OnboardingTaskStatus.PENDING,
-        )
-        assert task is not None
-
-        issue_tracker_used.send(
-            plugin=IssueTrackingPlugin(),
-            project=self.project,
-            user=self.user,
-            sender=type(IssueTrackingPlugin),
-        )
-        task = OrganizationOnboardingTask.objects.get(
-            organization=self.organization,
-            task=OnboardingTask.ISSUE_TRACKER,
-            status=OnboardingTaskStatus.COMPLETE,
-        )
-        assert task is not None
 
     def test_alert_added(self):
         alert_rule_created.send(
@@ -864,6 +861,7 @@ class OrganizationOnboardingTaskTest(TestCase):
             project_id=project.id,
             platform=project.platform,
             updated_empty_state=False,
+            origin=None,
         )
 
         # Set up tracing
@@ -1039,6 +1037,12 @@ class OrganizationOnboardingTaskTest(TestCase):
             organization_id=self.organization.id,
         )
 
+        # Manually update the completionSeen column of existing tasks
+        OrganizationOnboardingTask.objects.filter(organization=self.organization).update(
+            completion_seen=timezone.now()
+        )
+        onboarding_tasks.try_mark_onboarding_complete(self.organization.id)
+
         # The first group is complete but the beyond the basics is not
         assert (
             OrganizationOption.objects.filter(
@@ -1116,6 +1120,12 @@ class OrganizationOnboardingTaskTest(TestCase):
             organization_id=self.organization.id,
             project_id=second_project.id,
         )
+
+        # Manually update the completionSeen column of existing tasks
+        OrganizationOnboardingTask.objects.filter(organization=self.organization).update(
+            completion_seen=timezone.now()
+        )
+        onboarding_tasks.try_mark_onboarding_complete(self.organization.id)
 
         # Onboarding is complete
         assert (
@@ -1206,6 +1216,12 @@ class OrganizationOnboardingTaskTest(TestCase):
             default_rules=False,
         )
 
+        # Manually update the completionSeen column of existing tasks
+        OrganizationOnboardingTask.objects.filter(organization=self.organization).update(
+            completion_seen=timezone.now()
+        )
+        onboarding_tasks.try_mark_onboarding_complete(self.organization.id)
+
         # Onboarding is NOT yet complete
         assert (
             OrganizationOption.objects.filter(
@@ -1267,6 +1283,12 @@ class OrganizationOnboardingTaskTest(TestCase):
             project_platform=project.platform,
             url=dict(event_with_sourcemap.tags).get("url", None),
         )
+
+        # Manually update the completionSeen column of existing tasks
+        OrganizationOnboardingTask.objects.filter(organization=self.organization).update(
+            completion_seen=timezone.now()
+        )
+        onboarding_tasks.try_mark_onboarding_complete(self.organization.id)
 
         # Onboarding is NOW complete
         assert (

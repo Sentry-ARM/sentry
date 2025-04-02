@@ -517,9 +517,8 @@ describe('Dashboards > WidgetCard', function () {
     await waitFor(() => expect(eventsMock).toHaveBeenCalled());
 
     await waitFor(() =>
-      expect(SimpleTableChart).toHaveBeenCalledWith(
-        expect.objectContaining({stickyHeaders: true}),
-        expect.anything()
+      expect((SimpleTableChart as jest.Mock).mock.calls[0][0]).toEqual(
+        expect.objectContaining({stickyHeaders: true})
       )
     );
   });
@@ -654,7 +653,7 @@ describe('Dashboards > WidgetCard', function () {
       expect(mockCall?.tooltip).toBeDefined();
     });
     const mockCall = spy.mock.calls?.at(-1)?.[0];
-    // @ts-expect-error
+    // @ts-expect-error TODO: Fix this type
     expect(mockCall?.yAxis.axisLabel.formatter(24, 'p95(measurements.custom)')).toBe(
       '24ms'
     );
@@ -754,10 +753,10 @@ describe('Dashboards > WidgetCard', function () {
     });
     const mockCall = spy.mock.calls?.at(-1)?.[0];
     expect(
-      // @ts-expect-error
+      // @ts-expect-error TODO: Fix this type
       mockCall?.yAxis.axisLabel.formatter(60000, 'p50(transaction.duration)')
     ).toBe('60s');
-    // @ts-expect-error
+    // @ts-expect-error TODO: Fix this type
     expect(mockCall?.yAxis?.minInterval).toEqual(SECOND);
   });
 
