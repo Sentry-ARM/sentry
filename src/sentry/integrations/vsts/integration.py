@@ -33,7 +33,9 @@ from sentry.integrations.services.integration import integration_service
 from sentry.integrations.services.repository import RpcRepository, repository_service
 from sentry.integrations.source_code_management.repository import RepositoryIntegration
 from sentry.integrations.tasks.migrate_repo import migrate_repo
+from sentry.integrations.types import IntegrationProviderSlug
 from sentry.integrations.utils.metrics import (
+    IntegrationPipelineHaltReason,
     IntegrationPipelineViewEvent,
     IntegrationPipelineViewType,
 )
@@ -102,6 +104,13 @@ FEATURES = [
     ),
     FeatureDescription(
         """
+        Import your Azure DevOps codeowners file into Sentry and use it alongside your
+        ownership rules to assign Sentry issues.
+        """,
+        IntegrationFeatures.CODEOWNERS,
+    ),
+    FeatureDescription(
+        """
         Automatically create Azure DevOps work items based on Issue Alert conditions.
         """,
         IntegrationFeatures.TICKET_RULES,
@@ -129,9 +138,7 @@ class VstsIntegration(RepositoryIntegration, VstsIssuesSpec):
     outbound_assignee_key = "sync_forward_assignment"
     inbound_assignee_key = "sync_reverse_assignment"
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        self.default_identity: RpcIdentity | None = None
+    codeowners_locations = ["CODEOWNERS", ".sentry/CODEOWNERS"]
 
     @property
     def integration_name(self) -> str:
@@ -140,8 +147,6 @@ class VstsIntegration(RepositoryIntegration, VstsIssuesSpec):
     def get_client(self) -> VstsApiClient:
         base_url = self.instance
         if SiloMode.get_current_mode() != SiloMode.REGION:
-            if self.default_identity is None:
-                self.default_identity = self.get_default_identity()
             self._check_domain_name(self.default_identity)
 
         if self.org_integration is None:
@@ -374,8 +379,12 @@ class VstsIntegration(RepositoryIntegration, VstsIssuesSpec):
         base_url = VstsIntegrationProvider.get_base_url(
             default_identity.data["access_token"], self.model.external_id
         )
-        self.model.metadata["domain_name"] = base_url
-        self.model.save()
+        metadata = self.model.metadata.copy()
+        metadata["domain_name"] = base_url
+        integration_service.update_integration(
+            integration_id=self.model.id,
+            metadata=metadata,
+        )
 
     @property
     def instance(self) -> str:
@@ -390,7 +399,7 @@ class VstsIntegration(RepositoryIntegration, VstsIssuesSpec):
 
 
 class VstsIntegrationProvider(IntegrationProvider):
-    key = "vsts"
+    key = IntegrationProviderSlug.AZURE_DEVOPS.value
     name = "Azure DevOps"
     metadata = metadata
     api_version = "4.1"
@@ -406,6 +415,7 @@ class VstsIntegrationProvider(IntegrationProvider):
             IntegrationFeatures.ISSUE_BASIC,
             IntegrationFeatures.ISSUE_SYNC,
             IntegrationFeatures.STACKTRACE_LINK,
+            IntegrationFeatures.CODEOWNERS,
             IntegrationFeatures.TICKET_RULES,
         ]
     )
@@ -688,7 +698,7 @@ class AccountConfigView(PipelineView):
                 "accounts": accounts,
             }
             if not accounts or not accounts.get("value"):
-                lifecycle.record_failure("no_accounts", extra=extra)
+                lifecycle.record_halt(IntegrationPipelineHaltReason.NO_ACCOUNTS, extra=extra)
                 return render_to_response(
                     template="sentry/integrations/vsts-config.html",
                     context={"no_accounts": True},

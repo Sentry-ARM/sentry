@@ -1,8 +1,11 @@
 import {useEffect, useRef, useState} from 'react';
+import styled from '@emotion/styled';
 
 import Link from 'sentry/components/links/link';
 import {useLocation} from 'sentry/utils/useLocation';
 import type {GroupTag} from 'sentry/views/issueDetails/groupTags/useGroupTags';
+import {Tab, TabPaths} from 'sentry/views/issueDetails/types';
+import {useGroupDetailsRoute} from 'sentry/views/issueDetails/useGroupDetailsRoute';
 import {usePrefetchTagValues} from 'sentry/views/issueDetails/utils';
 
 export default function TagDetailsLink({
@@ -16,7 +19,8 @@ export default function TagDetailsLink({
 }) {
   const location = useLocation();
   const [prefetchEnabled, setPrefetchEnabled] = useState(false);
-  const hoverTimeoutRef = useRef<number | undefined>();
+  const hoverTimeoutRef = useRef<number | undefined>(undefined);
+  const {baseUrl} = useGroupDetailsRoute();
 
   usePrefetchTagValues(tag.key, groupId, prefetchEnabled);
 
@@ -44,15 +48,24 @@ export default function TagDetailsLink({
   }, []);
 
   return (
-    <Link
+    <StyledLink
       to={{
-        pathname: `${location.pathname}${tag.key}/`,
+        pathname: `${baseUrl}${TabPaths[Tab.DISTRIBUTIONS]}${tag.key}/`,
         query: location.query,
       }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       {children}
-    </Link>
+    </StyledLink>
   );
 }
+
+const StyledLink = styled(Link)`
+  border-radius: ${p => p.theme.borderRadius};
+  display: block;
+
+  &:hover h5 {
+    text-decoration: underline;
+  }
+`;

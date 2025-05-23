@@ -6,10 +6,11 @@ import {addErrorMessage, addSuccessMessage} from 'sentry/actionCreators/indicato
 import Access from 'sentry/components/acl/access';
 import SnoozeAlert from 'sentry/components/alerts/snoozeAlert';
 import {Breadcrumbs} from 'sentry/components/breadcrumbs';
-import ButtonBar from 'sentry/components/buttonBar';
 import type {DateTimeObject} from 'sentry/components/charts/utils';
 import {Alert} from 'sentry/components/core/alert';
-import {Button, LinkButton} from 'sentry/components/core/button';
+import {Button} from 'sentry/components/core/button';
+import {ButtonBar} from 'sentry/components/core/button/buttonBar';
+import {LinkButton} from 'sentry/components/core/button/linkButton';
 import ErrorBoundary from 'sentry/components/errorBoundary';
 import IdBadge from 'sentry/components/idBadge';
 import * as Layout from 'sentry/components/layouts/thirds';

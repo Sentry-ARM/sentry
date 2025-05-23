@@ -22,7 +22,7 @@ import {DisplayType, WidgetType} from 'sentry/views/dashboards/types';
 import {performanceScoreTooltip} from 'sentry/views/dashboards/utils';
 import WidgetLegendSelectionState from 'sentry/views/dashboards/widgetLegendSelectionState';
 
-jest.mock('echarts-for-react/lib/core', () => {
+jest.mock('echarts-for-react/lib/core', function () {
   return jest.fn(({style}) => {
     return <div style={{...style, background: 'green'}}>echarts mock</div>;
   });
@@ -59,7 +59,7 @@ async function renderModal({
     location: router.location,
     dashboard: DashboardFixture([widget], {id: 'new', title: 'Dashboard'}),
     organization,
-    router,
+    navigate: router.navigate,
   });
   const rendered = render(
     <div style={{padding: space(4)}}>
@@ -83,6 +83,7 @@ async function renderModal({
     {
       router,
       organization,
+      deprecatedRouterMocks: true,
     }
   );
   // Need to wait since WidgetViewerModal will make a request to events-meta
@@ -119,7 +120,7 @@ describe('Modals -> WidgetViewerModal', function () {
       location: initialData.router.location,
       dashboard: DashboardFixture([], {id: 'new', title: 'Dashboard'}),
       organization: initialData.organization,
-      router: initialData.router,
+      navigate: jest.fn(),
     });
 
     MockApiClient.addMockResponse({
@@ -189,7 +190,7 @@ describe('Modals -> WidgetViewerModal', function () {
 
       beforeEach(function () {
         mockQuery = {
-          conditions: 'title:/organizations/:orgId/performance/summary/',
+          conditions: 'title:/organizations/:orgId/insights/summary/',
           fields: ['count()'],
           aggregates: ['count()'],
           columns: [],
@@ -229,28 +230,24 @@ describe('Modals -> WidgetViewerModal', function () {
 
       it('renders Edit and Open buttons', async function () {
         mockEvents();
-        await renderModal({initialData, widget: mockWidget});
+        await renderModal({
+          initialData,
+          widget: {...mockWidget, widgetType: WidgetType.ERRORS},
+        });
         expect(await screen.findByText('Edit Widget')).toBeInTheDocument();
         expect(screen.getByText('Open in Discover')).toBeInTheDocument();
         expect(screen.getByRole('button', {name: 'Open in Discover'})).toBeEnabled();
       });
 
       it('renders Open button disabled for discover widget if dataset selector flag enabled', async function () {
-        const initData = {
-          ...initialData,
-          organization: {
-            ...initialData.organization,
-            features: [
-              ...initialData.organization.features,
-              'performance-discover-dataset-selector',
-            ],
-          },
-        };
         mockEvents();
-        await renderModal({initialData: initData, widget: mockWidget});
+        await renderModal({initialData, widget: mockWidget});
         expect(await screen.findByText('Edit Widget')).toBeInTheDocument();
         expect(screen.getByText('Open in Discover')).toBeInTheDocument();
-        expect(screen.getByRole('button', {name: 'Open in Discover'})).toBeDisabled();
+        expect(screen.getByRole('button', {name: 'Open in Discover'})).toHaveAttribute(
+          'aria-disabled',
+          'true'
+        );
       });
 
       it('renders updated table columns and orderby', async function () {
@@ -285,7 +282,7 @@ describe('Modals -> WidgetViewerModal', function () {
             query: expect.objectContaining({
               query:
                 // The release was injected into the discover query
-                '(title:/organizations/:orgId/performance/summary/) release:"project-release@1.2.0" ',
+                '(title:/organizations/:orgId/insights/summary/) release:"project-release@1.2.0" ',
             }),
           })
         );
@@ -308,10 +305,13 @@ describe('Modals -> WidgetViewerModal', function () {
 
       it('redirects user to Discover when clicking Open in Discover', async function () {
         mockEvents();
-        await renderModal({initialData, widget: mockWidget});
+        await renderModal({
+          initialData,
+          widget: {...mockWidget, widgetType: WidgetType.ERRORS},
+        });
         expect(screen.getByRole('button', {name: 'Open in Discover'})).toHaveAttribute(
           'href',
-          '/organizations/org-slug/discover/results/?environment=prod&environment=dev&field=count%28%29&name=Test%20Widget&project=1&project=2&query=title%3A%2Forganizations%2F%3AorgId%2Fperformance%2Fsummary%2F&statsPeriod=24h&yAxis=count%28%29'
+          '/organizations/org-slug/discover/results/?environment=prod&environment=dev&field=count%28%29&name=Test%20Widget&project=1&project=2&query=title%3A%2Forganizations%2F%3AorgId%2Finsights%2Fsummary%2F&queryDataset=error-events&statsPeriod=24h&yAxis=count%28%29'
         );
       });
 
@@ -387,20 +387,26 @@ describe('Modals -> WidgetViewerModal', function () {
         mockEvents();
         initialData.router.location.query = {query: ['7']};
 
-        await renderModal({initialData, widget: mockWidget});
+        await renderModal({
+          initialData,
+          widget: {...mockWidget, widgetType: WidgetType.ERRORS},
+        });
         expect(screen.getByRole('button', {name: 'Open in Discover'})).toHaveAttribute(
           'href',
-          '/organizations/org-slug/discover/results/?environment=prod&environment=dev&field=count%28%29&name=Test%20Widget&project=1&project=2&query=title%3A%2Forganizations%2F%3AorgId%2Fperformance%2Fsummary%2F&statsPeriod=24h&yAxis=count%28%29'
+          '/organizations/org-slug/discover/results/?environment=prod&environment=dev&field=count%28%29&name=Test%20Widget&project=1&project=2&query=title%3A%2Forganizations%2F%3AorgId%2Finsights%2Fsummary%2F&queryDataset=error-events&statsPeriod=24h&yAxis=count%28%29'
         );
       });
 
       it('renders the correct discover query link when there are multiple queries in a widget', async function () {
         mockEvents();
         initialData.router.location.query = {query: ['1']};
-        await renderModal({initialData, widget: mockWidget});
+        await renderModal({
+          initialData,
+          widget: {...mockWidget, widgetType: WidgetType.ERRORS},
+        });
         expect(screen.getByRole('button', {name: 'Open in Discover'})).toHaveAttribute(
           'href',
-          '/organizations/org-slug/discover/results/?environment=prod&environment=dev&field=count%28%29&name=Test%20Widget&project=1&project=2&query=&statsPeriod=24h&yAxis=count%28%29'
+          '/organizations/org-slug/discover/results/?environment=prod&environment=dev&field=count%28%29&name=Test%20Widget&project=1&project=2&query=&queryDataset=error-events&statsPeriod=24h&yAxis=count%28%29'
         );
       });
 
@@ -442,7 +448,7 @@ describe('Modals -> WidgetViewerModal', function () {
           },
         });
         await userEvent.click(
-          await screen.findByText('/organizations/:orgId/performance/summary/')
+          await screen.findByText('/organizations/:orgId/insights/summary/')
         );
       });
 
@@ -450,7 +456,7 @@ describe('Modals -> WidgetViewerModal', function () {
         mockEvents();
         mockWidget.queries = [
           {
-            conditions: 'title:/organizations/:orgId/performance/summary/',
+            conditions: 'title:/organizations/:orgId/insights/summary/',
             fields: ['count()'],
             aggregates: ['count()'],
             columns: ['transaction'],
@@ -466,7 +472,7 @@ describe('Modals -> WidgetViewerModal', function () {
         mockEvents();
         mockWidget.queries = [
           {
-            conditions: 'title:/organizations/:orgId/performance/summary/',
+            conditions: 'title:/organizations/:orgId/insights/summary/',
             fields: ['count()'],
             aggregates: ['count()'],
             columns: ['transaction'],
@@ -482,7 +488,7 @@ describe('Modals -> WidgetViewerModal', function () {
         mockEvents();
         mockWidget.queries = [
           {
-            conditions: 'title:/organizations/:orgId/performance/summary/',
+            conditions: 'title:/organizations/:orgId/insights/summary/',
             fields: ['count()'],
             aggregates: ['count()'],
             columns: ['transaction'],
@@ -586,7 +592,7 @@ describe('Modals -> WidgetViewerModal', function () {
         });
         mockWidget.queries = [
           {
-            conditions: 'title:/organizations/:orgId/performance/summary/',
+            conditions: 'title:/organizations/:orgId/insights/summary/',
             fields: [''],
             aggregates: [''],
             columns: ['transaction'],
@@ -606,7 +612,7 @@ describe('Modals -> WidgetViewerModal', function () {
           'href',
           expect.stringMatching(
             new RegExp(
-              '/organizations/org-slug/performance/summary/?.*project=2&referrer=performance-transaction-summary.*transaction=%2.*'
+              '/organizations/org-slug/insights/summary/?.*project=2&referrer=performance-transaction-summary.*transaction=%2.*'
             )
           )
         );
@@ -682,7 +688,7 @@ describe('Modals -> WidgetViewerModal', function () {
 
       beforeEach(function () {
         mockQuery = {
-          conditions: 'title:/organizations/:orgId/performance/summary/',
+          conditions: 'title:/organizations/:orgId/insights/summary/',
           fields: ['error.type', 'count()'],
           aggregates: ['count()'],
           columns: ['error.type'],
@@ -883,7 +889,7 @@ describe('Modals -> WidgetViewerModal', function () {
 
     describe('Table Widget', function () {
       const mockQuery = {
-        conditions: 'title:/organizations/:orgId/performance/summary/',
+        conditions: 'title:/organizations/:orgId/insights/summary/',
         fields: ['title', 'count()'],
         aggregates: ['count()'],
         columns: ['title'],
@@ -932,7 +938,7 @@ describe('Modals -> WidgetViewerModal', function () {
         await act(tick);
         expect(eventsMock).not.toHaveBeenCalled();
         await userEvent.click(await screen.findByLabelText('Next'));
-        await waitFor(() => {
+        await waitFor(function () {
           expect(eventsMock).toHaveBeenCalled();
         });
       });
@@ -1025,7 +1031,10 @@ describe('Modals -> WidgetViewerModal', function () {
             widgetType: 'discover',
           },
         });
-        expect(screen.getByRole('button', {name: 'Open in Discover'})).toBeDisabled();
+        expect(screen.getByRole('button', {name: 'Open in Discover'})).toHaveAttribute(
+          'aria-disabled',
+          'true'
+        );
 
         await userEvent.hover(screen.getByRole('button', {name: 'Open in Discover'}));
         expect(await screen.findByText(performanceScoreTooltip)).toBeInTheDocument();
@@ -1306,7 +1315,7 @@ describe('Modals -> WidgetViewerModal', function () {
       await renderModal({initialData, widget: mockWidget});
       expect(screen.getByRole('button', {name: 'Open in Releases'})).toHaveAttribute(
         'href',
-        '/organizations/org-slug/releases/?environment=prod&environment=dev&project=1&project=2&statsPeriod=24h'
+        '/organizations/org-slug/releases/?environment=prod&environment=dev&project=1&project=2&query=&statsPeriod=24h'
       );
     });
 

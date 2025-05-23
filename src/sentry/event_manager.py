@@ -53,8 +53,9 @@ from sentry.grouping.api import (
     GroupingConfig,
     get_grouping_config_dict_for_project,
 )
+from sentry.grouping.enhancer import get_enhancements_version
 from sentry.grouping.grouptype import ErrorGroupType
-from sentry.grouping.ingest.config import is_in_transition, update_grouping_config_if_needed
+from sentry.grouping.ingest.config import is_in_transition, update_or_set_grouping_config_if_needed
 from sentry.grouping.ingest.hashing import (
     find_grouphash_with_group,
     get_or_create_grouphashes,
@@ -88,6 +89,7 @@ from sentry.models.groupenvironment import GroupEnvironment
 from sentry.models.grouphash import GroupHash
 from sentry.models.grouphistory import GroupHistoryStatus, record_group_history
 from sentry.models.grouplink import GroupLink
+from sentry.models.groupopenperiod import GroupOpenPeriod, has_initial_open_period
 from sentry.models.grouprelease import GroupRelease
 from sentry.models.groupresolution import GroupResolution
 from sentry.models.organization import Organization
@@ -135,7 +137,7 @@ from sentry.utils.outcomes import Outcome, track_outcome
 from sentry.utils.performance_issues.performance_detection import detect_performance_problems
 from sentry.utils.performance_issues.performance_problem import PerformanceProblem
 from sentry.utils.safe import get_path, safe_execute, setdefault_path, trim
-from sentry.utils.sdk import set_measurement
+from sentry.utils.sdk import set_span_data
 from sentry.utils.tag_normalization import normalized_sdk_tag_from_event
 
 from .utils.event_tracker import TransactionStageStatus, track_sampled_event
@@ -392,6 +394,7 @@ class EventManager:
 
         pre_normalize_type = self._data.get("type")
         self._data = rust_normalizer.normalize_event(dict(self._data), json_loads=orjson.loads)
+
         # XXX: This is a hack to make generic events work (for now?). I'm not sure whether we should
         # include this in the rust normalizer, since we don't want people sending us these via the
         # sdk.
@@ -469,6 +472,7 @@ class EventManager:
                 "platform": job["event"].platform or "unknown",
                 "sdk": normalized_sdk_tag_from_event(job["event"].data),
                 "in_transition": job["in_grouping_transition"],
+                "split_enhancements": get_enhancements_version(project) == 3,
             }
             # This metric allows differentiating from all calls to the `event_manager.save` metric
             # and adds support for differentiating based on platforms
@@ -1244,7 +1248,7 @@ def assign_event_to_group(
     # hashes, we're free to perform a config update if needed. Future events will use the new
     # config, but will also be grandfathered into the current config for a week, so as not to
     # erroneously create new groups.
-    update_grouping_config_if_needed(project, "ingest")
+    update_or_set_grouping_config_if_needed(project, "ingest")
 
     # The only way there won't be group info is we matched to a performance, cron, replay, or
     # other-non-error-type group because of a hash collision - exceedingly unlikely, and not
@@ -1494,6 +1498,13 @@ def _create_group(
             logger.exception("Error after unsticking project counter")
             raise
 
+    if features.has("organizations:issue-open-periods", project.organization):
+        GroupOpenPeriod.objects.create(
+            group=group,
+            project_id=project.id,
+            date_started=group.first_seen,
+            date_ended=None,
+        )
     return group
 
 
@@ -1618,7 +1629,7 @@ def _handle_regression(group: Group, event: BaseEvent, release: Release | None) 
             sender="handle_regression",
         )
         if not options.get("groups.enable-post-update-signal"):
-            post_save.send(
+            post_save.send_robust(
                 sender=Group,
                 instance=group,
                 created=False,
@@ -1702,6 +1713,15 @@ def _handle_regression(group: Group, event: BaseEvent, release: Release | None) 
         kick_off_status_syncs.apply_async(
             kwargs={"project_id": group.project_id, "group_id": group.id}
         )
+        if features.has(
+            "organizations:issue-open-periods", group.project.organization
+        ) and has_initial_open_period(group):
+            GroupOpenPeriod.objects.create(
+                group=group,
+                project_id=group.project_id,
+                date_started=event.datetime,
+                date_ended=None,
+            )
 
     return is_regression
 
@@ -1799,6 +1819,10 @@ def _process_existing_aggregate(
         **incoming_metadata,
         "title": _get_updated_group_title(existing_metadata, incoming_metadata),
     }
+    initial_priority = updated_group_values["data"]["metadata"].get("initial_priority")
+    if initial_priority is not None:
+        # cast to an int, as we don't want to pickle enums into task args.
+        updated_group_values["data"]["metadata"]["initial_priority"] = int(initial_priority)
 
     # We pass `times_seen` separately from all of the other columns so that `buffer_inr` knows to
     # increment rather than overwrite the existing value
@@ -2443,9 +2467,12 @@ def _calculate_span_grouping(jobs: Sequence[Job], projects: ProjectsMapping) -> 
 @sentry_sdk.tracing.trace
 def _detect_performance_problems(jobs: Sequence[Job], projects: ProjectsMapping) -> None:
     for job in jobs:
-        job["performance_problems"] = detect_performance_problems(
-            job["data"], projects[job["project_id"]]
-        )
+        if job["data"].get("_performance_issues_spans"):
+            job["performance_problems"] = []
+        else:
+            job["performance_problems"] = detect_performance_problems(
+                job["data"], projects[job["project_id"]]
+            )
 
 
 @sentry_sdk.tracing.trace
@@ -2496,7 +2523,7 @@ def save_grouphash_and_group(
     event: Event,
     new_grouphash: str,
     **group_kwargs: Any,
-) -> tuple[Group, bool]:
+) -> tuple[Group, bool, GroupHash]:
     group = None
     with transaction.atomic(router.db_for_write(GroupHash)):
         group_hash, created = GroupHash.objects.get_or_create(project=project, hash=new_grouphash)
@@ -2510,7 +2537,7 @@ def save_grouphash_and_group(
         # Group, we can guarantee that the Group will exist at this point and
         # fetch it via GroupHash
         group = Group.objects.get(grouphash__project=project, grouphash__hash=new_grouphash)
-    return group, created
+    return group, created, group_hash
 
 
 @sentry_sdk.tracing.trace
@@ -2560,9 +2587,8 @@ def save_transaction_events(
                 )
             except KeyError:
                 continue
-
-    set_measurement(measurement_name="jobs", value=len(jobs))
-    set_measurement(measurement_name="projects", value=len(projects))
+    set_span_data("jobs", len(jobs))
+    set_span_data("projects", len(projects))
 
     # NOTE: Keep this list synchronized with sentry/spans/consumers/process_segments/message.py
 

@@ -1,9 +1,11 @@
 import {Fragment} from 'react';
+import {css} from '@emotion/react';
 import styled from '@emotion/styled';
 
-import ButtonBar from 'sentry/components/buttonBar';
 import {Tag} from 'sentry/components/core/badge/tag';
-import {Button, LinkButton} from 'sentry/components/core/button';
+import {Button} from 'sentry/components/core/button';
+import {ButtonBar} from 'sentry/components/core/button/buttonBar';
+import {LinkButton} from 'sentry/components/core/button/linkButton';
 import HotkeysLabel from 'sentry/components/hotkeysLabel';
 import LoadingIndicator from 'sentry/components/loadingIndicator';
 import {Overlay} from 'sentry/components/overlay';
@@ -503,7 +505,7 @@ const Info = styled('div')`
   display: flex;
   padding: ${space(1)} ${space(2)};
   font-size: ${p => p.theme.fontSizeLarge};
-  color: ${p => p.theme.gray300};
+  color: ${p => p.theme.subText};
 
   &:not(:last-child) {
     border-bottom: 1px solid ${p => p.theme.innerBorder};
@@ -517,7 +519,7 @@ const SearchDropdownGroupTitle = styled('header')`
   align-items: center;
 
   background-color: ${p => p.theme.backgroundSecondary};
-  color: ${p => p.theme.gray300};
+  color: ${p => p.theme.subText};
   font-weight: ${p => p.theme.fontWeightNormal};
   font-size: ${p => p.theme.fontSizeMedium};
 
@@ -535,13 +537,13 @@ const SearchItemsList = styled('ul')<{maxMenuHeight?: number}>`
   margin-bottom: 0;
   ${p => {
     if (p.maxMenuHeight !== undefined) {
-      return `
+      return css`
         max-height: ${p.maxMenuHeight}px;
         overflow-y: scroll;
       `;
     }
 
-    return `
+    return css`
       height: auto;
     `;
   }}
@@ -557,7 +559,7 @@ const SearchListItem = styled('li')<{isChild?: boolean; isDisabled?: boolean}>`
 
   ${p => {
     if (!p.isDisabled) {
-      return `
+      return css`
         cursor: pointer;
 
         &:hover,
@@ -641,7 +643,7 @@ const DropdownFooter = styled(`div`)`
 `;
 
 const HotkeyGlyphWrapper = styled('span')`
-  color: ${p => p.theme.gray300};
+  color: ${p => p.theme.subText};
   margin-right: ${space(0.5)};
 
   @media (max-width: ${p => p.theme.breakpoints.small}) {

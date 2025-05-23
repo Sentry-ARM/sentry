@@ -1,6 +1,7 @@
 import {useMemo} from 'react';
 import styled from '@emotion/styled';
 
+import {Flex} from 'sentry/components/container/flex';
 import AvatarList from 'sentry/components/core/avatar/avatarList';
 import {t, tn} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
@@ -42,17 +43,15 @@ function ReleaseCardCommits({release, withHeading = true}: Props) {
   ].join(' ');
 
   return (
-    <div className="release-stats">
+    <Flex className="release-stats" align="center">
       {withHeading && <ReleaseSummaryHeading>{releaseSummary}</ReleaseSummaryHeading>}
-      <span style={{display: 'inline-block'}}>
-        <AvatarList users={authors} avatarSize={25} typeAvatars="authors" />
-      </span>
-    </div>
+      <AvatarList users={authors} avatarSize={25} typeAvatars="authors" />
+    </Flex>
   );
 }
 
 const ReleaseSummaryHeading = styled('div')`
-  color: ${p => p.theme.gray300};
+  color: ${p => p.theme.subText};
   font-size: ${p => p.theme.fontSizeSmall};
   line-height: 1.2;
   font-weight: ${p => p.theme.fontWeightBold};

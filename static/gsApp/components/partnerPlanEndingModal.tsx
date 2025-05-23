@@ -8,7 +8,8 @@ import {addErrorMessage, addSuccessMessage} from 'sentry/actionCreators/indicato
 import type {ModalRenderProps} from 'sentry/actionCreators/modal';
 import {Client} from 'sentry/api';
 import {Tag} from 'sentry/components/core/badge/tag';
-import {Button, LinkButton} from 'sentry/components/core/button';
+import {Button} from 'sentry/components/core/button';
+import {LinkButton} from 'sentry/components/core/button/linkButton';
 import {IconBusiness} from 'sentry/icons';
 import {IconClock} from 'sentry/icons/iconClock';
 import {t, tct, tn} from 'sentry/locale';
@@ -260,7 +261,7 @@ const PathHeading = styled('h5')`
 const SubHeading = styled('div')`
   font-weight: bold;
   font-size: ${p => p.theme.fontSizeMedium};
-  color: ${p => p.theme.gray300};
+  color: ${p => p.theme.subText};
   text-transform: uppercase;
 `;
 

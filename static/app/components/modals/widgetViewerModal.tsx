@@ -1,5 +1,5 @@
 import {Fragment, memo, useEffect, useMemo, useState} from 'react';
-import {css} from '@emotion/react';
+import {css, useTheme} from '@emotion/react';
 import styled from '@emotion/styled';
 import {truncate} from '@sentry/core';
 import * as Sentry from '@sentry/react';
@@ -12,11 +12,13 @@ import moment from 'moment-timezone';
 import {fetchTotalCount} from 'sentry/actionCreators/events';
 import type {ModalRenderProps} from 'sentry/actionCreators/modal';
 import type {Client} from 'sentry/api';
-import ButtonBar from 'sentry/components/buttonBar';
 import {Alert} from 'sentry/components/core/alert';
-import {Button, LinkButton} from 'sentry/components/core/button';
+import {Button} from 'sentry/components/core/button';
+import {ButtonBar} from 'sentry/components/core/button/buttonBar';
+import {LinkButton} from 'sentry/components/core/button/linkButton';
 import {Select} from 'sentry/components/core/select';
 import {SelectOption} from 'sentry/components/core/select/option';
+import {Tooltip} from 'sentry/components/core/tooltip';
 import {components} from 'sentry/components/forms/controls/reactSelectWrapper';
 import type {GridColumnOrder} from 'sentry/components/gridEditable';
 import GridEditable, {COL_WIDTH_UNDEFINED} from 'sentry/components/gridEditable';
@@ -24,7 +26,6 @@ import Pagination from 'sentry/components/pagination';
 import QuestionTooltip from 'sentry/components/questionTooltip';
 import {parseSearch} from 'sentry/components/searchSyntax/parser';
 import HighlightQuery from 'sentry/components/searchSyntax/renderer';
-import {Tooltip} from 'sentry/components/tooltip';
 import {t, tct} from 'sentry/locale';
 import {space} from 'sentry/styles/space';
 import type {PageFilters, SelectValue} from 'sentry/types/core';
@@ -113,7 +114,6 @@ export interface WidgetViewerModalOptions {
   dashboardCreator?: User;
   dashboardFilters?: DashboardFilters;
   dashboardPermissions?: DashboardPermissions;
-  isSampled?: boolean | null;
   onEdit?: () => void;
   onMetricWidgetEdit?: (widget: Widget) => void;
   pageLinks?: string;
@@ -199,8 +199,8 @@ function WidgetViewerModal(props: Props) {
     dashboardCreator,
     confidence,
     sampleCount,
-    isSampled,
   } = props;
+  const theme = useTheme();
   const location = useLocation();
   const {projects} = useProjects();
   const navigate = useNavigate();
@@ -493,6 +493,7 @@ function WidgetViewerModal(props: Props) {
               location,
               widget: tableWidget,
               tableData: tableResults?.[0],
+              theme,
               onHeaderClick: () => {
                 if (
                   [DisplayType.TOP_N, DisplayType.TABLE].includes(widget.displayType) ||
@@ -510,6 +511,7 @@ function WidgetViewerModal(props: Props) {
               isFirstPage,
               projects,
               eventView,
+              theme,
             }),
             onResizeColumn,
           }}
@@ -526,7 +528,7 @@ function WidgetViewerModal(props: Props) {
                     [WidgetViewerQueryField.CURSOR]: newCursor,
                   },
                 },
-                {replace: true}
+                {replace: true, preventScrollReset: true}
               );
 
               if (widget.displayType === DisplayType.TABLE) {
@@ -566,6 +568,7 @@ function WidgetViewerModal(props: Props) {
             renderHeadCell: renderIssueGridHeaderCell({
               location,
               organization,
+              theme,
               selection,
               widget: tableWidget,
               onHeaderClick: () => {
@@ -574,6 +577,7 @@ function WidgetViewerModal(props: Props) {
             }) as (column: GridColumnOrder, columnIndex: number) => React.ReactNode,
             renderBodyCell: renderGridBodyCell({
               location,
+              theme,
               organization,
               selection,
               widget: tableWidget,
@@ -640,6 +644,7 @@ function WidgetViewerModal(props: Props) {
             renderHeadCell: renderReleaseGridHeaderCell({
               ...props,
               location,
+              theme,
               widget: tableWidget,
               tableData: tableResults?.[0],
               onHeaderClick: () => {
@@ -654,6 +659,7 @@ function WidgetViewerModal(props: Props) {
             renderBodyCell: renderGridBodyCell({
               ...props,
               location,
+              theme,
               tableData: tableResults?.[0],
               isFirstPage,
             }),
@@ -859,7 +865,6 @@ function WidgetViewerModal(props: Props) {
                 showConfidenceWarning={widget.widgetType === WidgetType.SPANS}
                 confidence={confidence}
                 sampleCount={sampleCount}
-                isSampled={isSampled}
               />
             ) : (
               <MemoizedWidgetCardChartContainer
@@ -1048,6 +1053,7 @@ function WidgetViewerModal(props: Props) {
                       {widget.widgetType && (
                         <OpenButton
                           widget={primaryWidget}
+                          dashboardFilters={dashboardFilters}
                           organization={organization}
                           selection={modalSelection}
                           selectedQueryIndex={selectedQueryIndex}
@@ -1072,6 +1078,7 @@ function WidgetViewerModal(props: Props) {
 }
 
 interface OpenButtonProps {
+  dashboardFilters: DashboardFilters | undefined;
   organization: Organization;
   selectedQueryIndex: number;
   selection: PageFilters;
@@ -1082,6 +1089,7 @@ interface OpenButtonProps {
 
 function OpenButton({
   widget,
+  dashboardFilters,
   selection,
   organization,
   selectedQueryIndex,
@@ -1095,21 +1103,22 @@ function OpenButton({
   switch (widget.widgetType) {
     case WidgetType.ISSUE:
       openLabel = t('Open in Issues');
-      path = getWidgetIssueUrl(widget, selection, organization);
+      path = getWidgetIssueUrl(widget, dashboardFilters, selection, organization);
       break;
     case WidgetType.RELEASE:
       openLabel = t('Open in Releases');
-      path = getWidgetReleasesUrl(widget, selection, organization);
+      path = getWidgetReleasesUrl(widget, dashboardFilters, selection, organization);
       break;
     case WidgetType.SPANS:
       openLabel = t('Open in Explore');
-      path = getWidgetExploreUrl(widget, selection, organization);
+      path = getWidgetExploreUrl(widget, dashboardFilters, selection, organization);
       break;
     case WidgetType.DISCOVER:
     default:
       openLabel = t('Open in Discover');
       path = getWidgetDiscoverUrl(
         {...widget, queries: [widget.queries[selectedQueryIndex]!]},
+        dashboardFilters,
         selection,
         organization,
         0,

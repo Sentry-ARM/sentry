@@ -1,21 +1,27 @@
 from __future__ import annotations
 
+import logging
+from dataclasses import asdict
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from django.db import models
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
+from jsonschema import ValidationError, validate
 
 from sentry.backup.scopes import RelocationScope
 from sentry.db.models import DefaultFieldsModel, region_silo_model, sane_repr
 from sentry.db.models.fields.hybrid_cloud_foreign_key import HybridCloudForeignKey
 from sentry.workflow_engine.models.json_config import JSONConfigBase
 from sentry.workflow_engine.registry import action_handler_registry
-from sentry.workflow_engine.types import ActionHandler, WorkflowJob
+from sentry.workflow_engine.types import ActionHandler, WorkflowEventData
 
 if TYPE_CHECKING:
     from sentry.workflow_engine.models import Detector
+
+
+logger = logging.getLogger(__name__)
 
 
 @region_silo_model
@@ -43,13 +49,25 @@ class Action(DefaultFieldsModel, JSONConfigBase):
         GITHUB_ENTERPRISE = "github_enterprise"
         JIRA = "jira"
         JIRA_SERVER = "jira_server"
-        AZURE_DEVOPS = "azure_devops"
+        AZURE_DEVOPS = "vsts"
 
         EMAIL = "email"
         SENTRY_APP = "sentry_app"
 
         PLUGIN = "plugin"
         WEBHOOK = "webhook"
+
+        def is_integration(self) -> bool:
+            """
+            Returns True if the action is an integration action.
+            For those, the value should correspond to the integration key.
+            """
+            return self not in [
+                Action.Type.EMAIL,
+                Action.Type.SENTRY_APP,
+                Action.Type.PLUGIN,
+                Action.Type.WEBHOOK,
+            ]
 
     # The type field is used to denote the type of action we want to trigger
     type = models.TextField(choices=[(t.value, t.value) for t in Type])
@@ -65,16 +83,32 @@ class Action(DefaultFieldsModel, JSONConfigBase):
         action_type = Action.Type(self.type)
         return action_handler_registry.get(action_type)
 
-    def trigger(self, job: WorkflowJob, detector: Detector) -> None:
-        # get the handler for the action type
+    def trigger(self, event_data: WorkflowEventData, detector: Detector) -> None:
+        logger.info(
+            "workflow_engine.action.trigger",
+            extra={
+                "detector_id": detector.id,
+                "action_id": self.id,
+                "event_data": asdict(event_data),
+            },
+        )
+
         handler = self.get_handler()
-        handler.execute(job, self, detector)
+        handler.execute(event_data, self, detector)
 
 
 @receiver(pre_save, sender=Action)
 def enforce_config_schema(sender, instance: Action, **kwargs):
     handler = instance.get_handler()
-    schema = handler.config_schema
 
-    if schema is not None:
-        instance.validate_config(schema)
+    config_schema = handler.config_schema
+    data_schema = handler.data_schema
+
+    if config_schema is not None:
+        instance.validate_config(config_schema)
+
+    if data_schema is not None:
+        try:
+            validate(instance.data, data_schema)
+        except ValidationError as e:
+            raise ValidationError(f"Invalid config: {e.message}")

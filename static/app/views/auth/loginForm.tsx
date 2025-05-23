@@ -2,7 +2,7 @@ import {useState} from 'react';
 import styled from '@emotion/styled';
 
 import {Alert} from 'sentry/components/core/alert';
-import {LinkButton} from 'sentry/components/core/button';
+import {LinkButton} from 'sentry/components/core/button/linkButton';
 import SecretField from 'sentry/components/forms/fields/secretField';
 import TextField from 'sentry/components/forms/fields/textField';
 import Form from 'sentry/components/forms/form';
@@ -150,7 +150,7 @@ const ProviderWrapper = styled('div')`
 `;
 
 const LostPasswordLink = styled(Link)`
-  color: ${p => p.theme.gray300};
+  color: ${p => p.theme.subText};
   font-size: ${p => p.theme.fontSizeMedium};
 
   &:hover {

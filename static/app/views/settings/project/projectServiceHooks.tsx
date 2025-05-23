@@ -5,7 +5,7 @@ import {
   addLoadingMessage,
   clearIndicators,
 } from 'sentry/actionCreators/indicator';
-import {LinkButton} from 'sentry/components/core/button';
+import {LinkButton} from 'sentry/components/core/button/linkButton';
 import {Switch} from 'sentry/components/core/switch';
 import EmptyMessage from 'sentry/components/emptyMessage';
 import FieldGroup from 'sentry/components/forms/fieldGroup';
@@ -139,7 +139,7 @@ function ProjectServiceHooks() {
       <Fragment>
         <PanelHeader key="header">{t('Service Hook')}</PanelHeader>
         <PanelBody key="body">
-          <PanelAlert type="info" showIcon>
+          <PanelAlert type="info">
             {t(
               'Service Hooks are an early adopter preview feature and will change in the future.'
             )}
